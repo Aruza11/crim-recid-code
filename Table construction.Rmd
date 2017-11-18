@@ -1,0 +1,143 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Ctrl+Shift+Enter*. 
+```{r}
+library(dplyr)
+library(readr)
+library(tidyr)
+library(ggplot2)
+
+```
+
+
+```{r}
+# Connect to the database
+db <- src_sqlite("compas-analysis/compas.db", create = TRUE)
+
+# List all the tables
+table_names <- src_tbls(db)
+table_names
+```
+
+```{r}
+casearrest_df <- tbl(db,"casearrest")
+charge_df <- tbl(db,"charge")
+compas_df <- tbl(db,"compas")
+jailhistory_df <-tbl(db,"jailhistory")
+prisonhistory_df <-tbl(db,"prisonhistory")
+people_df<-tbl(db,"people")
+```
+
+Creating a new df from a subset of compas_df, altering names of some columns
+```{r}
+dfnew=select(compas_df,id,person_id, first, last, marital_status, screening_date,scale_id, type_of_assessment, raw_score, decile_score)
+dfnew=rename(dfnew, person_score_id=id)
+#View(dfnew)
+```
+
+Joining dfnew to relevant columns in people_df
+```{r}
+peoplenew=select(people_df,id, name,sex, race, dob, age, c_case_number)
+peoplenew=rename(peoplenew,person_id=id)
+dfnew=left_join(dfnew, peoplenew, by="person_id")
+```
+
+Joining dfnew to relevant columns in casearrest_df--COMMENTED OUT FOR NOW
+```{r}
+#casearrestnew=select(casearrest_df,person_id, case_number, arrest_id, arrest_date, #charge_degree)
+#dfnew=left_join(dfnew, casearrestnew, by="person_id")
+```
+
+Performed check on jailhistorynew(sorting jailhistory_df by last name to see 
+if I noticed any anomalies)
+Joined dfnew to relevant columns in jailhistory_df
+```{r}
+jailhistorynew=select(jailhistory_df,person_id, in_custody, out_custody)
+jailhistorynew=rename(jailhistorynew,jail_in_custody=in_custody, jail_out_custody=out_custody)
+dfnew=left_join(dfnew, jailhistorynew, by="person_id")
+```
+
+Joined dfnew to relevant columns in charge_df
+```{r}
+chargenew=select(charge_df,person_id, case_type, case_number, offense_date, charge_number, charge_degree, charge, date_charge_filed, filing_type, filing_agency, statute)
+dfnew=left_join(dfnew, chargenew, by="person_id")
+```
+Joined dfnew to relevant columns in prisonhistory_df
+```{r}
+prisonhistorynew=select(prisonhistory_df,person_id, in_custody, out_custody)
+prisonhistorynew=rename(prisonhistorynew,prison_in_custody=in_custody, prison_out_custody=out_custody)
+dfnew=left_join(dfnew, prisonhistorynew, by="person_id")
+```
+
+features table; generated from dfnew
+categorical variables assigned numbers 0 and up as follows: 
+marital status: 0=single, 1=married; sex: 0=male, 1=female; race: 
+other variables (kept as is): first, last, person_id, dob, age, 
+
+```{r}
+
+features=select(person_id, first, last,)
+```
+
+
+
+
+
+
+data visualization dfs--use name as a parameter
+```{r}
+person="miguel hernandez"
+#person="bilal williams"
+case=filter(dfnew, name==person)
+#case_names=colnames(case)
+
+jailtb=as_data_frame(distinct(select(case,jail_in_custody,jail_out_custody)))
+jailtb=rename(jailtb, incustody=jail_in_custody, outcustody=jail_out_custody)
+jailtb=mutate(jailtb, event="jail")
+
+
+prisontb=as_data_frame(distinct(select(case,prison_in_custody,prison_out_custody)))
+prisontb=rename(prisontb, incustody=prison_in_custody, outcustody=prison_out_custody)
+prisontb=mutate(prisontb,event="prison")
+
+
+chargetb=as_data_frame(distinct(select(case,offense_date)))
+chargetb=rename(chargetb, incustody=offense_date)
+chargetb=mutate(chargetb,outcustody=incustody,event="charge")
+
+eventstb=bind_rows(jailtb, prisontb,chargetb)
+eventstb$incustody=as.Date(eventstb$incustody)
+eventstb$outcustody=as.Date(eventstb$outcustody)
+
+infotb=as_data_frame(distinct(select(case,name,person_id,sex,race,dob,age,marital_status,type_of_assessment,raw_score,decile_score)))
+infotb$dob=as.Date(infotb$dob)
+```
+
+Visualization
+```{r}
+#check if use of logical operator "or" is correct
+
+vis=ggplot(eventstb, aes(colour=event)) + 
+    geom_segment(aes(x=(subset(eventstb,event="prison"|"jail")$incustody),
+                     xend=(subset(eventstb,event="prison"|"jail")$outcustody), 
+                     y=event, yend=event),size=3)+
+    geom_point(aes(x=(subset(eventstb,event="charge")$incustody),y=event))+
+    labs(title=person,x="time")+
+    scale_x_date(date_breaks="1 year", date_labels="%b %Y")
+
+vis
+infotb
+```
+
+TODO: 
+Work on displaying the degree of each charge above the charge pts
+Check validity of logical operator "or" in graph code
+Get prison/jail time lengths to look bigger--change scale? 
+
+Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Ctrl+Alt+I*.
+When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Ctrl+Shift+K* to preview the HTML file).

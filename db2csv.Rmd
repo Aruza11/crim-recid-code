@@ -1,0 +1,32 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+Converts the database into csv files.
+
+```{r}
+library(dplyr)
+library(readr)
+```
+
+
+```{r}
+# Connect to the database
+db <- src_sqlite("compas-analysis/compas.db", create = TRUE)
+
+# List all the tables
+table_names <- src_tbls(db)
+table_names
+```
+
+```{r}
+# Save each table csv in the format "db_[table name].csv"
+for (i in 1:length(table_names)){
+  table = tbl(db,table_names[i])
+  
+  write_csv(as.tbl(as.data.frame(table)),
+            paste0("db_",table_names[i],".csv"))
+}
+```
+

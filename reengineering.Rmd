@@ -1,0 +1,212 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library(dplyr)
+library(readr)
+library(lubridate)
+```
+
+```{r}
+# Some helper functions I wrote
+source('functions.R', echo=FALSE)
+```
+
+
+```{r}
+# Read in all the data
+table1_df <- read_csv("db_casearrest.csv")
+table2_df <- read_csv("db_charge.csv")
+table3_df <- read_csv("db_compas.csv")
+table4_df <- read_csv("db_jailhistory.csv")
+table5_df <- read_csv("db_prisonhistory.csv")
+table6_df <- read_csv("db_people.csv")
+table7_df <- read_csv("db_summary.csv")
+
+# I'm calling the final propublica file the "csv" file
+csv <- read_csv("compas-analysis/compas-scores-two-years.csv")
+```
+
+
+
+
+```{r}
+# First find the first date for each person in the compas table
+compas_date <- table3_df %>%
+  group_by(person_id) %>%
+  mutate(screening_date = as.Date(screening_date)) %>%
+  summarize(compas_date = min(screening_date)) 
+
+# My guess is this should match the screening date in the csv
+# Let's check it out
+compas_date %>%
+  select(id=person_id, compas_date) %>%
+  left_join(select(csv, id, screening_date), ., by="id") %>%
+  mutate(diff = days_between(screening_date,compas_date)) %>%
+  summarize(max(diff))
+```
+
+
+-----------
+
+In this section I try to match all the "c_[field]" (i.e. the column name begins with "c_") columns in the csv file. 
+
+```{r}
+# These are my guesses at the ordering of the charge degree severity (more severe to less). This is just a guess.
+charge_degree_levels <- c("(F1)",
+                          "(F2)",
+                          "(F3)",
+                          "(F5)",
+                          "(F6)",
+                          "(F7)",
+                          "(M1)",
+                          "(M2)",
+                          "(M3)",
+                          "(TC4)",
+                          "(TCX)",
+                          "(CO3)",
+                          "(NI0)",
+                          "(X)",
+                          "(MO3)",
+                          "(CT)",
+                          "XXXXXXXXXX",
+                          "(0)")
+
+
+table1_df$charge_degree <- factor(table1_df$charge_degree, levels=charge_degree_levels, ordered = TRUE)
+table2_df$charge_degree <- factor(table2_df$charge_degree, levels=charge_degree_levels, ordered = TRUE)
+```
+
+
+My hypothesis is that is the the c_ fields correspond to the latest cases before the compas screening date. If there are multiple charges associated with a case, we'll take the most severe. I also disregarded any charge degree of "(0)".
+
+I'll do this separately for people that have a c_offense_date and people that have a_arrest_date. My assumption is the data comes from the charge and arrest tables, respectively.
+
+```{r}
+# Attempt at reproducing all c_ fields (using table 2 with offense date)
+compas_date %>% # Should match screening date in csv
+  left_join(table2_df, ., by="person_id") %>%
+  group_by(person_id) %>%
+  filter(charge_degree != "(0)") %>% # Disregard "(0)" charges
+  filter(offense_date <= compas_date) %>% # Only consider dates before the compas_date
+  arrange(desc(offense_date), charge_degree, charge_number) %>%
+  slice(1) %>% # Take row corresponding to latest offense
+  select(id=person_id, case_number, offense_date, charge_degree, charge) %>%
+  left_join(select(csv, id, name, c_offense_date, c_arrest_date, 
+                   c_case_number, c_charge_degree, c_charge_desc), ., by="id") %>%
+  filter(!is.na(c_offense_date)) %>% # We'll compare on arrest_date later
+  mutate(charge_degree_compare = substr(charge_degree,2,2)) %>%
+  mutate(agree_date = offense_date == c_offense_date,
+         agree_case = case_number == c_case_number,
+         agree_degree = charge_degree_compare == c_charge_degree,
+         agree_desc = charge == c_charge_desc) %>%
+  summarize(mean(agree_date), mean(agree_case), mean(agree_degree), mean(agree_desc, na.rm=TRUE))
+```
+
+
+```{r}
+# Attempt at reproducing all c_ fields (using table 1 with arrest date)
+compas_date %>% # Should match screening date in csv
+  left_join(table1_df, ., by="person_id") %>%
+  group_by(person_id) %>%
+  filter(charge_degree != "(0)") %>% # Disregard "(0)" charges
+  filter(arrest_date <= compas_date) %>% # Only consider dates before the compas_date
+  arrange(desc(arrest_date), charge_degree) %>%
+  slice(1) %>% # Take row corresponding to latest arrest
+  select(id=person_id, case_number, arrest_date, charge_degree) %>%
+  left_join(select(csv, id, name, c_arrest_date, c_arrest_date, 
+                   c_case_number, c_charge_degree), ., by="id") %>%
+  filter(!is.na(c_arrest_date)) %>% # We'll compare on arrest_date later
+  mutate(charge_degree_compare = substr(charge_degree,2,2)) %>%
+  mutate(agree_date = arrest_date == c_arrest_date,
+         agree_case = case_number == c_case_number,
+         agree_degree = charge_degree_compare == c_charge_degree) %>%
+  summarize(mean(agree_date), mean(agree_case), mean(agree_degree))
+```
+
+
+--------
+
+Now let's try the recidivating crime (what I assume is related to the columns that begin with "r_")
+
+Hypothesis: it's the first offense date after the screening date that doesn't have degree "(0)" (mostly correct, but doesn't get all cases. Looks like sometimes "(M03)" is allowed, sometimes not).
+
+```{r}
+compas_date %>% # Should match screening date in csv
+  left_join(table2_df, ., by="person_id") %>%
+  group_by(person_id) %>%
+  filter(charge_degree %in% c("(F1)","(F2)","(F3)","(F5)","(F6)","(F7)","(M1)","(M2)","(M3)")) %>%
+  filter(offense_date > compas_date) %>% # Only consider dates after the compas_date
+  arrange(offense_date, charge_degree) %>%
+  slice(1) %>% # Take earliest offense
+  select(id = person_id, charge, case_number, offense_date, charge_degree) %>%
+  left_join(select(csv, id, name, r_offense_date, r_case_number, r_charge_degree, r_charge_desc), ., by="id") %>%
+  filter(!is.na(r_offense_date)) %>% # Only compare non-missing r_offense_dates 
+  mutate(agree_date = offense_date == r_offense_date,
+         agree_case = case_number == r_case_number,
+         agree_degree = charge_degree == r_charge_degree,
+         agree_desc = charge == r_charge_desc) %>%
+  summarize(mean(agree_date, na.rm=TRUE), mean(agree_case, na.rm=TRUE), 
+            mean(agree_degree, na.rm=TRUE), mean(agree_desc, na.rm=TRUE))
+
+
+```
+
+------------------------------
+
+I think that c_jail_in is the nearest custody_in date in the jail table to the screening date. Let's try it out.
+
+```{r}
+table4_df %>%
+  select(id=person_id, in_custody_t4=in_custody, out_custody_t4=out_custody) %>%
+  left_join(., select(csv,id, name, screening_date, c_jail_in, c_jail_out), by="id") %>%
+  #mutate(diff = abs(days_between(in_custody_t4, screening_date))) %>%
+  mutate(diff = abs(as.numeric(as.period(interval(in_custody_t4,screening_date)), "seconds"))) %>%
+  group_by(id) %>%
+  arrange(diff) %>%
+  slice(1) %>%
+  left_join(select(csv,id), ., by="id") %>% # Join again to limit to people in csv
+  mutate(agree_in = c_jail_in == in_custody_t4,
+         agree_out = c_jail_out == out_custody_t4) %>%
+  summarize(mean(agree_in, na.rm=TRUE), mean(agree_out, na.rm=TRUE))
+
+# Pretty close!
+```
+
+
+------------------------------
+
+Hypothesis: r_jail_in is the first in_custody date after the r_offense date.
+
+```{r}
+table4_df %>%
+  select(id=person_id, in_custody_t4=in_custody, out_custody_t4=out_custody) %>%
+  left_join(., select(csv,id, name, r_offense_date, r_jail_in, r_jail_out), by="id") %>%
+  mutate(diff = as.numeric(as.period(interval(r_offense_date,in_custody_t4), "seconds"))) %>%
+  filter(diff>0) %>%
+  group_by(id) %>%
+  arrange(diff) %>%
+  slice(1) %>%
+  left_join(select(csv,id), ., by="id") %>% # Join again to limit to people in csv
+  mutate(agree_in = r_jail_in == as.Date(in_custody_t4),
+         agree_out = r_jail_out == as.Date(out_custody_t4)) %>%
+  summarize(mean(agree_in, na.rm=TRUE), mean(agree_out, na.rm=TRUE))
+  
+```
+
+------------------------------
+
+The people table contains several columns that have the same name as columns in the csv. Let's see if they're the same.
+
+The "diff" output from compare_df gives the fraction of non-missing rows that disagree when matched on id.
+
+```{r}
+# Compare the 
+table6_df %>%
+  mutate(c_charge_degree = substr(table6_df$c_charge_degree,2,2)) %>% 
+  compare_df(csv, ., id) # Note that this is a custom function
+```
+
+So it looks like the common columns match up. However, it looks like these columns are derived from the other tables. I don't think the people table is an original data source, it looks like just intermediate storage.
