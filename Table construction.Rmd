@@ -74,25 +74,67 @@ prisonhistorynew=rename(prisonhistorynew,prison_in_custody=in_custody, prison_ou
 dfnew=left_join(dfnew, prisonhistorynew, by="person_id")
 ```
 
-features table; generated from dfnew
-categorical variables assigned numbers 0 and up as follows: 
-marital status: 0=single, 1=married; sex: 0=male, 1=female; race: 
-other variables (kept as is): first, last, person_id, dob, age, 
-
+Recompute some of Compas' data and joining to dfnew (eventually)
 ```{r}
 
-features=select(person_id, first, last,)
 ```
 
 
+**features table code being; generated from dfnew**
 
-
-
-
-data visualization dfs--use name as a parameter
+Checking for all unique values for each relevant column
 ```{r}
-person="miguel hernandez"
-#person="bilal williams"
+#marital status: single and married 
+mar=as_data_frame(distinct(select(dfnew, marital_status)))
+sex=as_data_frame(distinct(select(dfnew, sex)))
+race=as_data_frame(distinct(select(dfnew, race)))
+charge_deg=as_data_frame(distinct(select(dfnew, charge_degree)))
+charge=as_data_frame(distinct(select(dfnew, charge)))
+
+```
+
+
+categorical variables assigned numbers 1 and up as detailed in features table excel
+static features--variables unique to each person, and which  I must assign numbers
+```{r}
+#use levels(dataset$column) to check what the vectors are
+#should write a function for this later
+#should go through person by person using a while true loop 
+features=as_data_frame(distinct(select(dfnew, person_id, first,last,age,sex,marital_status,race)))
+
+features$sex=factor(features$sex, levels=c("Male", "Female"), labels=c(1,2))
+features$sex=as.numeric(as.character(features$sex))
+
+features$marital_status=factor(features$marital_status, levels=c("Single", "Married", "Separated","Significant Other","Widowed","Divorced","Unknown"), labels=c(1,2,3,4,5,6,7))
+features$marital_status=as.numeric(as.character(features$marital_status))
+
+features$race=factor(features$race, levels=c("Caucasian", "African-American","Hispanic","Asian","Native American","Other"), labels=c(1,2,3,4,5,6))
+features$race=as.numeric(as.character(features$race))
+
+features
+```
+
+dynamic features-variables which will have a numeric value, and describe the charges/cases/crimes
+```{r}
+#number of felonies total 
+dynamic<-dfnew %>%
+  group_by(person_id) %>%
+  summarise(num_felonies=sum(felonies=(f)))
+  
+  count()
+ # summarise(tot_felonies=)
+```
+
+combination features (static and dynamic)
+```{r}
+
+```
+
+
+**data visualization dfs--use name as a parameter**
+```{r}
+#person="miguel hernandez"
+person="bilal williams"
 case=filter(dfnew, name==person)
 #case_names=colnames(case)
 
@@ -121,6 +163,7 @@ infotb$dob=as.Date(infotb$dob)
 Visualization
 ```{r}
 #check if use of logical operator "or" is correct
+#linear spacing for x axis
 
 vis=ggplot(eventstb, aes(colour=event)) + 
     geom_segment(aes(x=(subset(eventstb,event="prison"|"jail")$incustody),
