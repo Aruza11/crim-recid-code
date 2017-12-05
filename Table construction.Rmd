@@ -117,28 +117,33 @@ features
 
 dynamic features-variables which will have a numeric value, and describe the charges/cases/crimes
 Problem: must distinguish distinct cases to get unique felonies
+PERFORM CHECK (use person id 75-408 felonies??)
 ```{r}
 
-dynamic1=dfnew %>%
-           distinct(person_id,offense_date,screening_date,charge_degree,prison_in_custody,prison_out_custody,jail_in_custody,jail_out_custody)%>%
+dynamic_fel_incarceration=dfnew %>%
+           distinct(person_id,offense_date,screening_date,date_charge_filed,charge_degree,prison_in_custody,prison_out_custody,jail_in_custody,jail_out_custody)%>%
+
            mutate(beforeCOMPAS=if_else(offense_date<=screening_date,1,0))%>%
-           mutate(is_felony = if_else(substr(charge_degree,2,2)=="F",1,0)) %>%
            filter(beforeCOMPAS==1)%>%
-  
+           mutate(is_felony = if_else(substr(charge_degree,2,2)=="F",1,0)) %>%
+   #        filter(is_felony==1)%>%
+#           mutate(is_fel_5yrs=if_else(screening_date-date_charge_filed<=5,1,0))%>%
+
               group_by(person_id) %>%
                  summarize(felony_count_person = sum(is_felony),
+  #                         fel_count_5yrs=sum(is_fel_5yrs),
                            prison_visits=n_distinct(prison_in_custody),
                            prison_time=sum(distinct(prison_out_custody-prison_in_custody)),
 
                            jail_visits=n_distinct(jail_in_custody),
                            jail_time=sum(distinct(jail_out_custody-jail_in_custody))
-                           
-                       #    jailandprison_visits=prison_visits+jail_visits,
-                       #    jailandprison_time=prison_time+jail_time
-                        
-                           )
-dynamic1
+                 )
 
+dynamic1=dynamic1%>%
+         mutate(jailandprison_visits=prison_visits+jail_visits)%>%
+         mutate(jailandprison_time=prison_time+jail_time)
+
+dynamic_fel_incarceration
 
 #Q: is checking #prison_in_custody enough to determine prison visits? 
 #Q: prison_time/jail_time: what if they were in jail 2x the exact same amount of time?
@@ -146,23 +151,59 @@ dynamic1
 ```
 
 ```{r}
-#checking for juvenile felonies
-features3=dfnew%>%
+#checking for number of felonies that occurred at most 5 yrs before the screening date
+dynamic_fel5=dfnew%>%
+           distinct(person_id,offense_date,screening_date,charge_degree,date_charge_filed)%>%
            mutate(beforeCOMPAS=if_else(offense_date<=screening_date,1,0))%>%
            mutate(is_felony = if_else(substr(charge_degree,2,2)=="F",1,0)) %>%
            filter(beforeCOMPAS==1)%>%
-           filter(date_charge_filed-screening_date<=5)%>%
+           filter(screening_date-date_charge_filed<=5)%>%
               group_by(person_id) %>%
                  summarize(yrs5_felcount_person = sum(is_felony)
                         
                            )
-features3
+dynamic_fel5
+
+```
+
+Calculating drug offenses in past 5 years
+```{r}
+#idea: 1) Filter by statute number
+#      2)include date in summarize table to get 5 yr drug offense
+
+dynamic_drug=dfnew%>%
+           distinct(person_id,offense_date,screening_date,date_charge_filed,statute)%>%
+           mutate(beforeCOMPAS=if_else(offense_date<=screening_date,1,0))%>%
+           mutate(is_drug= if_else(substr(statute,1,3)=="893",1,0)) %>%
+           filter(beforeCOMPAS==1)%>%
+           filter(is_drug==1)%>%
+           mutate(is_drug_5yrs=if_else(screening_date-date_charge_filed<=5,1,0))%>%
+              group_by(person_id) %>%
+                 summarize(drug_count_person = sum(is_drug),
+                           drug_count_5yrs=sum(is_drug_5yrs)
+                           )
+dynamic_drug
+
+```
+
+```{r}
+dynamic_misdem=dfnew%>%
+           distinct(person_id,offense_date,screening_date,date_charge_filed,charge_degree)%>%
+           mutate(beforeCOMPAS=if_else(offense_date<=screening_date,1,0))%>%
+           mutate(is_misdem= if_else(substr(charge_degree,2,2)=="M",1,0)) %>%
+           filter(beforeCOMPAS==1)%>%
+           filter(is_misdem==1)%>%
+           mutate(is_misdem_5yrs=if_else(screening_date-date_charge_filed<=5,1,0))%>%
+              group_by(person_id) %>%
+                 summarize(misdem_count_person = sum(is_misdem),
+                           misdem_count_5yrs=sum(is_misdem_5yrs)
+                           )
+dynamic_misdem
 
 ```
 
 
-
-combination features (static and dynamic)
+combine all features (static and dynamic)
 ```{r}
 
 ```
