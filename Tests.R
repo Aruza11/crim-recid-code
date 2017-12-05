@@ -12,3 +12,6 @@ Sys.info()$machine
 ?save
 ?tbl
 ?db
+
+v=c(1:10)
+v

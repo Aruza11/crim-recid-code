@@ -7,10 +7,11 @@ This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute
 
 Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Ctrl+Shift+Enter*. 
 ```{r}
-library(dplyr)
-library(readr)
-library(tidyr)
-library(ggplot2)
+library(stringr)
+library(tidyverse)
+  #includes core: ggplot2,dplyr,tidyr,readr,purrr,tibble
+library(magrittr)
+ 
 
 ```
 
@@ -115,15 +116,51 @@ features
 ```
 
 dynamic features-variables which will have a numeric value, and describe the charges/cases/crimes
+Problem: must distinguish distinct cases to get unique felonies
 ```{r}
-#number of felonies total 
-dynamic<-dfnew %>%
-  group_by(person_id) %>%
-  summarise(num_felonies=sum(felonies=(f)))
+
+dynamic1=dfnew %>%
+           distinct(person_id,offense_date,screening_date,charge_degree,prison_in_custody,prison_out_custody,jail_in_custody,jail_out_custody)%>%
+           mutate(beforeCOMPAS=if_else(offense_date<=screening_date,1,0))%>%
+           mutate(is_felony = if_else(substr(charge_degree,2,2)=="F",1,0)) %>%
+           filter(beforeCOMPAS==1)%>%
   
-  count()
- # summarise(tot_felonies=)
+              group_by(person_id) %>%
+                 summarize(felony_count_person = sum(is_felony),
+                           prison_visits=n_distinct(prison_in_custody),
+                           prison_time=sum(distinct(prison_out_custody-prison_in_custody)),
+
+                           jail_visits=n_distinct(jail_in_custody),
+                           jail_time=sum(distinct(jail_out_custody-jail_in_custody))
+                           
+                       #    jailandprison_visits=prison_visits+jail_visits,
+                       #    jailandprison_time=prison_time+jail_time
+                        
+                           )
+dynamic1
+
+
+#Q: is checking #prison_in_custody enough to determine prison visits? 
+#Q: prison_time/jail_time: what if they were in jail 2x the exact same amount of time?
+
 ```
+
+```{r}
+#checking for juvenile felonies
+features3=dfnew%>%
+           mutate(beforeCOMPAS=if_else(offense_date<=screening_date,1,0))%>%
+           mutate(is_felony = if_else(substr(charge_degree,2,2)=="F",1,0)) %>%
+           filter(beforeCOMPAS==1)%>%
+           filter(date_charge_filed-screening_date<=5)%>%
+              group_by(person_id) %>%
+                 summarize(yrs5_felcount_person = sum(is_felony)
+                        
+                           )
+features3
+
+```
+
+
 
 combination features (static and dynamic)
 ```{r}
@@ -134,7 +171,8 @@ combination features (static and dynamic)
 **data visualization dfs--use name as a parameter**
 ```{r}
 #person="miguel hernandez"
-person="bilal williams"
+#person="bilal williams"
+person="edward riddle"
 case=filter(dfnew, name==person)
 #case_names=colnames(case)
 
@@ -151,6 +189,9 @@ prisontb=mutate(prisontb,event="prison")
 chargetb=as_data_frame(distinct(select(case,offense_date)))
 chargetb=rename(chargetb, incustody=offense_date)
 chargetb=mutate(chargetb,outcustody=incustody,event="charge")
+#Note: these are not unique charges, these are the unique DAYS cases occured
+#On an events visualization, even if somebody had 20 charges on 1 day, it will still
+#only appear as 1 point so there's no point in doing anything else. 
 
 eventstb=bind_rows(jailtb, prisontb,chargetb)
 eventstb$incustody=as.Date(eventstb$incustody)
