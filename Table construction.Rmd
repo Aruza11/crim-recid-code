@@ -91,7 +91,9 @@ sex=as_data_frame(distinct(select(dfnew, sex)))
 race=as_data_frame(distinct(select(dfnew, race)))
 charge_deg=as_data_frame(distinct(select(dfnew, charge_degree)))
 charge=as_data_frame(distinct(select(dfnew, charge)))
+statute=as_data_frame(distinct(select(dfnew,statute)))
 
+  
 ```
 
 
@@ -199,6 +201,46 @@ dynamic_misdem=dfnew%>%
                            misdem_count_5yrs=sum(is_misdem_5yrs)
                            )
 dynamic_misdem
+
+```
+
+Arnold Foundation PSA features
+.	Age at current arrest-already covered 
+.	Current violent offence
+.	Current violent offence & 20 yrs old or younger
+.	Pending charge at time of the offense
+.	Prior misdemeanor conviction 
+.	Prior felony conviction 
+.	Prior conviction (misdemeanor or felony) 
+.	Prior violent conviction
+.	Prior failure to appear pretrial in the past two years 
+.	Prior failure to appear pretrial older than two years 
+.	Prior sentence to incarceration 
+
+Arnold Foundation: age at current arrest, current violent offence, current violent&20 or younger, prior sentence to incarceration 
+```{r}
+#to compute age at current arrest: screening-dob
+#to compute current violent offence: use statutes 
+
+arnold1=dfnew%>%
+           distinct(person_id,offense_date,screening_date,date_charge_filed,charge_degree,dob,statute)%>%
+  
+           mutate(beforeCOMPAS=if_else(offense_date<=screening_date,1,0))%>%
+           filter(beforeCOMPAS==1)%>%
+              group_by(person_id) %>%
+                 summarize(current_age=(screening_date-dob)
+                           )
+arnold1
+
+felonystatutes=dfnew%>%
+           distinct(person_id,offense_date,screening_date,date_charge_filed,charge_degree,dob,statute)%>%
+           mutate(beforeCOMPAS=if_else(offense_date<=screening_date,1,0))%>%
+           mutate(is_felony = if_else(substr(charge_degree,2,2)=="F",1,0)) %>%
+           filter(is_felony==1)%>%
+           filter(beforeCOMPAS==1)
+          # distinct(statute) #why doesn't this work?
+View(distinct(select(felonystatutes,statute)))
+#save as CSV?
 
 ```
 
