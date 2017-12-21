@@ -123,7 +123,7 @@ PERFORM CHECK (use person id 75-408 felonies??)
 ```{r}
 
 dynamic_fel_incarceration=dfnew %>%
-           distinct(person_id,offense_date,screening_date,date_charge_filed,charge_degree,prison_in_custody,prison_out_custody,jail_in_custody,jail_out_custody)%>%
+           distinct(person_id,offense_date,screening_date,date_charge_filed,charge_degree,prison_in_custody,prison_out_custody,jail_in_custody,jail_out_custody,case_number)%>%
 
            mutate(beforeCOMPAS=if_else(offense_date<=screening_date,1,0))%>%
            filter(beforeCOMPAS==1)%>%
@@ -138,15 +138,17 @@ dynamic_fel_incarceration=dfnew %>%
                            prison_time=sum(distinct(prison_out_custody-prison_in_custody)),
 
                            jail_visits=n_distinct(jail_in_custody),
-                           jail_time=sum(distinct(jail_out_custody-jail_in_custody))
+                           jail_time=sum(distinct(jail_out_custody-jail_in_custody)),
+                           numcases=n_distinct(case_number)
+                    
                  )
 
-dynamic1=dynamic1%>%
-         mutate(jailandprison_visits=prison_visits+jail_visits)%>%
-         mutate(jailandprison_time=prison_time+jail_time)
+#dynamic1=dynamic1%>%
+ #        mutate(jailandprison_visits=prison_visits+jail_visits)%>%
+  #       mutate(jailandprison_time=prison_time+jail_time)
 
 dynamic_fel_incarceration
-
+summarise(dynamic_fel_incarceration, Average = mean(numcases, na.rm = T))
 #Q: is checking #prison_in_custody enough to determine prison visits? 
 #Q: prison_time/jail_time: what if they were in jail 2x the exact same amount of time?
 
@@ -251,11 +253,13 @@ combine all features (static and dynamic)
 ```
 
 
-**data visualization dfs--use name as a parameter**
+**data visualization dfs
+--use name as a parameter**
 ```{r}
 #person="miguel hernandez"
 #person="bilal williams"
-person="edward riddle"
+#person="edward riddle"
+person="aajah herrington"
 case=filter(dfnew, name==person)
 #case_names=colnames(case)
 
@@ -281,6 +285,8 @@ eventstb$incustody=as.Date(eventstb$incustody)
 eventstb$outcustody=as.Date(eventstb$outcustody)
 
 infotb=as_data_frame(distinct(select(case,name,person_id,sex,race,dob,age,marital_status,type_of_assessment,raw_score,decile_score)))
+casenumbers=as_data_frame(distinct(select(case,name,person_id,case_number)))
+
 infotb$dob=as.Date(infotb$dob)
 ```
 
@@ -299,6 +305,7 @@ vis=ggplot(eventstb, aes(colour=event)) +
 
 vis
 infotb
+casenumbers
 ```
 
 TODO: 
