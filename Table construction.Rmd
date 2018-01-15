@@ -34,7 +34,14 @@ prisonhistory_df <-tbl(db,"prisonhistory")
 people_df<-tbl(db,"people")
 ```
 
+
+```{r}
+fail_to_appear<-read.csv("Data tables/fail_to_appear.csv")
+convictions<-read.csv("Data tables/convicted_from_disps.csv")
+```
+
 Creating a new df from a subset of compas_df, altering names of some columns
+Starting with compas_df b/c I don't want people I don't have compas scores for
 ```{r}
 dfnew=select(compas_df,id,person_id, first, last, marital_status, screening_date,scale_id, type_of_assessment, raw_score, decile_score)
 dfnew=rename(dfnew, person_score_id=id)
@@ -72,7 +79,11 @@ Joined dfnew to relevant columns in prisonhistory_df
 ```{r}
 prisonhistorynew=select(prisonhistory_df,person_id, in_custody, out_custody)
 prisonhistorynew=rename(prisonhistorynew,prison_in_custody=in_custody, prison_out_custody=out_custody)
-dfnew=left_join(dfnew, prisonhistorynew, by="person_id")
+dfnew=dfnew%>%
+        left_join(prisonhistorynew, by="person_id")%>%
+        mutate(beforeCOMPAS=if_else(offense_date<=screening_date,1,0))%>%
+        filter(beforeCOMPAS==1)
+
 ```
 
 Recompute some of Compas' data and joining to dfnew (eventually)
@@ -124,9 +135,9 @@ PERFORM CHECK (use person id 75-408 felonies??)
 
 dynamic_fel_incarceration=dfnew %>%
            distinct(person_id,offense_date,screening_date,date_charge_filed,charge_degree,prison_in_custody,prison_out_custody,jail_in_custody,jail_out_custody,case_number)%>%
-
-           mutate(beforeCOMPAS=if_else(offense_date<=screening_date,1,0))%>%
-           filter(beforeCOMPAS==1)%>%
+# 
+#            mutate(beforeCOMPAS=if_else(offense_date<=screening_date,1,0))%>%
+#            filter(beforeCOMPAS==1)%>%
            mutate(is_felony = if_else(substr(charge_degree,2,2)=="F",1,0)) %>%
    #        filter(is_felony==1)%>%
 #           mutate(is_fel_5yrs=if_else(screening_date-date_charge_filed<=5,1,0))%>%
@@ -158,9 +169,9 @@ summarise(dynamic_fel_incarceration, Average = mean(numcases, na.rm = T))
 #checking for number of felonies that occurred at most 5 yrs before the screening date
 dynamic_fel5=dfnew%>%
            distinct(person_id,offense_date,screening_date,charge_degree,date_charge_filed)%>%
-           mutate(beforeCOMPAS=if_else(offense_date<=screening_date,1,0))%>%
-           mutate(is_felony = if_else(substr(charge_degree,2,2)=="F",1,0)) %>%
-           filter(beforeCOMPAS==1)%>%
+           # mutate(beforeCOMPAS=if_else(offense_date<=screening_date,1,0))%>%
+             mutate(is_felony = if_else(substr(charge_degree,2,2)=="F",1,0)) %>%
+           # filter(beforeCOMPAS==1)%>%
            filter(screening_date-date_charge_filed<=5)%>%
               group_by(person_id) %>%
                  summarize(yrs5_felcount_person = sum(is_felony)
@@ -177,9 +188,9 @@ Calculating drug offenses in past 5 years
 
 dynamic_drug=dfnew%>%
            distinct(person_id,offense_date,screening_date,date_charge_filed,statute)%>%
-           mutate(beforeCOMPAS=if_else(offense_date<=screening_date,1,0))%>%
+           # mutate(beforeCOMPAS=if_else(offense_date<=screening_date,1,0))%>%
            mutate(is_drug= if_else(substr(statute,1,3)=="893",1,0)) %>%
-           filter(beforeCOMPAS==1)%>%
+           # filter(beforeCOMPAS==1)%>%
            filter(is_drug==1)%>%
            mutate(is_drug_5yrs=if_else(screening_date-date_charge_filed<=5,1,0))%>%
               group_by(person_id) %>%
@@ -193,9 +204,9 @@ dynamic_drug
 ```{r}
 dynamic_misdem=dfnew%>%
            distinct(person_id,offense_date,screening_date,date_charge_filed,charge_degree)%>%
-           mutate(beforeCOMPAS=if_else(offense_date<=screening_date,1,0))%>%
+           # mutate(beforeCOMPAS=if_else(offense_date<=screening_date,1,0))%>%
            mutate(is_misdem= if_else(substr(charge_degree,2,2)=="M",1,0)) %>%
-           filter(beforeCOMPAS==1)%>%
+           # filter(beforeCOMPAS==1)%>%
            filter(is_misdem==1)%>%
            mutate(is_misdem_5yrs=if_else(screening_date-date_charge_filed<=5,1,0))%>%
               group_by(person_id) %>%
@@ -210,16 +221,22 @@ Arnold Foundation PSA features
 .	Age at current arrest-already covered 
 .	Current violent offence
 .	Current violent offence & 20 yrs old or younger
+.	Prior sentence to incarceration 
+
+
 .	Pending charge at time of the offense
+
 .	Prior misdemeanor conviction 
 .	Prior felony conviction 
 .	Prior conviction (misdemeanor or felony) 
 .	Prior violent conviction
+
 .	Prior failure to appear pretrial in the past two years 
 .	Prior failure to appear pretrial older than two years 
-.	Prior sentence to incarceration 
 
-Arnold Foundation: age at current arrest, current violent offence, current violent&20 or younger, prior sentence to incarceration 
+MUST DEAL WITH: person_id.x!=person_id.y,NAs (possibly requery?)
+
+PSA Features: age at current arrest, current violent offence, current violent&20 or younger, prior sentence to incarceration 
 ```{r}
 #to compute age at current arrest: screening-dob
 #to compute current violent offence: use statutes 
@@ -227,8 +244,6 @@ Arnold Foundation: age at current arrest, current violent offence, current viole
 arnold1=dfnew%>%
            distinct(person_id,offense_date,screening_date,date_charge_filed,charge_degree,dob,statute)%>%
   
-           mutate(beforeCOMPAS=if_else(offense_date<=screening_date,1,0))%>%
-           filter(beforeCOMPAS==1)%>%
               group_by(person_id) %>%
                  summarize(current_age=(screening_date-dob)
                            )
@@ -236,13 +251,114 @@ arnold1
 
 felonystatutes=dfnew%>%
            distinct(person_id,offense_date,screening_date,date_charge_filed,charge_degree,dob,statute)%>%
-           mutate(beforeCOMPAS=if_else(offense_date<=screening_date,1,0))%>%
+           # mutate(beforeCOMPAS=if_else(offense_date<=screening_date,1,0))%>%
            mutate(is_felony = if_else(substr(charge_degree,2,2)=="F",1,0)) %>%
            filter(is_felony==1)%>%
-           filter(beforeCOMPAS==1)
+           # filter(beforeCOMPAS==1)
           # distinct(statute) #why doesn't this work?
 View(distinct(select(felonystatutes,statute)))
 #save as CSV?
+
+```
+PSA Features: Convictions
+.	Prior misdemeanor conviction 
+.	Prior felony conviction 
+.	Prior conviction (misdemeanor or felony) 
+.	Prior violent conviction
+
+a table with person_id,case_number,charge_number,charge_degree,convicted or not
+ISSUE: Missing many dispositions; must reparse XML strings
+Chose to interpret prior conviction(misdem or felony) as ANY conviction--is this correct?
+```{r}
+convictions_subset<-convictions%>%
+                      select(person_id,case_num,Charge,convicted)%>%  
+                      rename(case_number=case_num,charge_number=Charge)  
+arnold2<-dfnew%>%
+            select(person_id,case_number,charge_number,charge_degree,charge,statute)%>%
+            distinct()%>%
+            as_data_frame()%>%
+            left_join(convictions_subset, by=c("person_id","case_number","charge_number"))%>%
+            mutate(is_felony = if_else(substr(charge_degree,2,2)=="F",1,0),
+                   is_misdem= if_else(substr(charge_degree,2,2)=="M",1,0),
+                    prior_conviction_F=if_else(is_felony==1&convicted==1,1,0),
+                    prior_conviction_M=if_else(is_misdem==1&convicted==1,1,0),
+                    prior_conviction_MF=if_else(prior_conviction_F==1|prior_conviction_M==1,1,0)) 
+# %>%
+#             group_by(person_id)%>%
+#               summarise(person_id=person_id,
+#                         prior_conviction_MF=if_else(sum(convicted)>0,1,0),
+#                         )
+
+
+
+View(arnold2)
+                      
+```
+
+more dev code
+```{r}
+d1 <- data_frame(
+  x = letters[1:3],
+  y = LETTERS[1:3],
+  a = rnorm(3)
+  )
+
+d2 <- data_frame(
+  x2 = letters[3:1],
+  y2 = LETTERS[3:1],
+  b = rnorm(3)
+  )
+d1
+d2
+left_join(d1, d2, by = c("x" = "x2", "y" = "y2"))
+```
+
+
+PSA Features: Failure to appear 
+.	Prior failure to appear pretrial in the past two years 
+.	Prior failure to appear pretrial older than two years 
+Possible issue:  person_id.x!=person_id.y. Check why. 
+```{r}
+#check using event date from other dataset?
+distinct_fail_to_appear<-fail_to_appear%>%
+                        distinct(EventDate,case_num,fail_appeared)%>%
+                        rename(case_number=case_num)
+#Failure to appear pretrial in past 2 years
+
+arnold3<-dfnew%>%
+        select(person_id,case_number,screening_date)%>%
+        distinct()%>%
+        as_data_frame()%>%
+        left_join(distinct_fail_to_appear,by="case_number")
+
+arnold3$EventDate<-as.Date(arnold3$EventDate,format = "%m/%d/%Y")
+arnold3$screening_date<-as.Date(arnold3$screening_date,format = "%Y-%m-%d %T")
+
+#calculates DAYS between 
+#CHECK CODe ABOVE
+arnold3=arnold3%>% 
+        filter(EventDate<screening_date)%>% #note that NAs are dropped (correct?)
+        mutate(bw=screening_date-EventDate,
+              logical=bw<=730,
+              fail_appear_two_yr=if_else(logical,1,0),
+              fail_appear_two_plus=if_else(!logical,1,0))%>%
+        select(person_id,case_number,fail_appeared,fail_appear_two_yr,fail_appear_two_plus)
+
+# all(arnold3$person_id.x==arnold3$person_id.y,na.rm=T)
+# View(filter(arnold3,person_id.x!=person_id.y))
+
+View(filter(arnold3,fail_appeared==1))
+View(arnold3)
+```
+
+Dev code
+```{r}
+test=arnold3%>%
+      filter(fail_appeared==1)%>%
+      mutate(bw=screening_date-EventDate,logical=bw<=730,fail_appear_two_yr=if_else(logical,1,0))
+
+#View(filter(test,bw==1))
+View(filter(test,fail_appeared==1))  
 
 ```
 
