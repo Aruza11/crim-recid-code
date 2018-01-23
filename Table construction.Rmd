@@ -36,8 +36,8 @@ people_df<-tbl(db,"people")
 
 
 ```{r}
-fail_to_appear<-read.csv("Data tables/fail_to_appear.csv")
-convictions<-read.csv("Data tables/convicted_from_disps.csv")
+#fail_to_appear<-read.csv("Data tables/fail_to_appear.csv")
+#convictions<-read.csv("Data tables/convicted_from_disps.csv")
 ```
 
 Creating a new df from a subset of compas_df, altering names of some columns
@@ -46,37 +46,28 @@ Starting with compas_df b/c I don't want people I don't have compas scores for
 dfnew=select(compas_df,id,person_id, first, last, marital_status, screening_date,scale_id, type_of_assessment, raw_score, decile_score)
 dfnew=rename(dfnew, person_score_id=id)
 #View(dfnew)
-```
 
-Joining dfnew to relevant columns in people_df
-```{r}
+#Joining dfnew to relevant columns in people_df
 peoplenew=select(people_df,id, name,sex, race, dob, age, c_case_number)
 peoplenew=rename(peoplenew,person_id=id)
 dfnew=left_join(dfnew, peoplenew, by="person_id")
-```
 
-Joining dfnew to relevant columns in casearrest_df--COMMENTED OUT FOR NOW
-```{r}
+#Joining dfnew to relevant columns in casearrest_df--COMMENTED OUT FOR NOW
 #casearrestnew=select(casearrest_df,person_id, case_number, arrest_id, arrest_date, #charge_degree)
 #dfnew=left_join(dfnew, casearrestnew, by="person_id")
-```
 
-Performed check on jailhistorynew(sorting jailhistory_df by last name to see 
-if I noticed any anomalies)
-Joined dfnew to relevant columns in jailhistory_df
-```{r}
+# Performed check on jailhistorynew(sorting jailhistory_df by last name to see 
+# if I noticed any anomalies)
+# Joined dfnew to relevant columns in jailhistory_df
 jailhistorynew=select(jailhistory_df,person_id, in_custody, out_custody)
 jailhistorynew=rename(jailhistorynew,jail_in_custody=in_custody, jail_out_custody=out_custody)
 dfnew=left_join(dfnew, jailhistorynew, by="person_id")
-```
 
-Joined dfnew to relevant columns in charge_df
-```{r}
+#Joined dfnew to relevant columns in charge_df
 chargenew=select(charge_df,person_id, case_type, case_number, offense_date, charge_number, charge_degree, charge, date_charge_filed, filing_type, filing_agency, statute)
 dfnew=left_join(dfnew, chargenew, by="person_id")
-```
-Joined dfnew to relevant columns in prisonhistory_df
-```{r}
+
+#Joined dfnew to relevant columns in prisonhistory_df
 prisonhistorynew=select(prisonhistory_df,person_id, in_custody, out_custody)
 prisonhistorynew=rename(prisonhistorynew,prison_in_custody=in_custody, prison_out_custody=out_custody)
 dfnew=dfnew%>%
@@ -85,6 +76,9 @@ dfnew=dfnew%>%
         filter(beforeCOMPAS==1)
 
 ```
+
+
+
 
 Recompute some of Compas' data and joining to dfnew (eventually)
 ```{r}
@@ -102,8 +96,19 @@ sex=as_data_frame(distinct(select(dfnew, sex)))
 race=as_data_frame(distinct(select(dfnew, race)))
 charge_deg=as_data_frame(distinct(select(dfnew, charge_degree)))
 charge=as_data_frame(distinct(select(dfnew, charge)))
-statute=as_data_frame(distinct(select(dfnew,statute)))
+statute=dfnew%>%
+          select(statute)%>%
+          mutate(truncated=substr(statute,1,3),
+          is_violent=if_else(substr(statute,1,3) %in% c("777","782","784","806","812","825","827"),1,0)
+)%>%
+      #    select(truncated)%>%
+       #   distinct()%>%
+          as_data_frame()
+        
+#sort(distinct(statute$truncated))
+#distinct(filter(statute,truncated=="OCS"))
 
+#filter(dfnew,statute=="ODRD631")
   
 ```
 
@@ -237,17 +242,34 @@ Arnold Foundation PSA features
 MUST DEAL WITH: person_id.x!=person_id.y,NAs (possibly requery?)
 
 PSA Features: age at current arrest, current violent offence, current violent&20 or younger, prior sentence to incarceration 
+Question: by prior sentence to incarceration, do they mean prison or jail? 
+Here, will take to be prison because jail is short-term; also, I think everybody in this dataset has gone to jail, so incarceration would not be a useful feature if I counted jail. 
 ```{r}
-#to compute age at current arrest: screening-dob
-#to compute current violent offence: use statutes 
-
+#CHECK IF SOMEBODY DOESN'T HAVE ANY OFFENSES WITHIN 5 DAYS
 arnold1=dfnew%>%
-           distinct(person_id,offense_date,screening_date,date_charge_filed,charge_degree,dob,statute)%>%
-  
-              group_by(person_id) %>%
-                 summarize(current_age=(screening_date-dob)
-                           )
-arnold1
+           distinct(person_id,offense_date,screening_date,
+                    charge_degree,dob,statute,prison_in_custody,prison_out_custody)%>%
+            mutate(current_age=screening_date-dob,
+                  twenty_or_younger=if_else(current_age<=20,1,0))
+           #        is_violent=if_else(substr(statute,1,3) %in% c("777","782","784","806","812","825","827"),1,0),
+           #        days_from_compas=screening_date-offense_date,
+           #        is_current=if_else(days_from_compas<5,1,0),
+           #        in_prison=if_else(prison_out_custody-prison_in_custody>0,1,0)
+           #        )%>%
+           # filter(is_current==1)%>%
+           # as_data_frame()%>%
+           # mutate(current_violent=if_else(is_violent==1,1,0),
+           #        current_violent_twenty=if_else(is_violent==1&twenty_or_younger==1,1,0)
+           #        )%>%
+           # 
+           # group_by(person_id) %>%
+           #    summarize(current_age=max(current_age),
+           #              current_violent=if_else(sum(current_violent)>0,1,0),
+           #              current_violent_twenty=if_else(sum(current_violent_twenty)>0,1,0),
+           #              prior_incarceration=if_else(sum(in_prison)>0,1,0)
+           # 
+           #                 )
+View(arnold1)
 
 felonystatutes=dfnew%>%
            distinct(person_id,offense_date,screening_date,date_charge_filed,charge_degree,dob,statute)%>%
@@ -280,37 +302,24 @@ arnold2<-dfnew%>%
             left_join(convictions_subset, by=c("person_id","case_number","charge_number"))%>%
             mutate(is_felony = if_else(substr(charge_degree,2,2)=="F",1,0),
                    is_misdem= if_else(substr(charge_degree,2,2)=="M",1,0),
-                    prior_conviction_F=if_else(is_felony==1&convicted==1,1,0),
-                    prior_conviction_M=if_else(is_misdem==1&convicted==1,1,0),
-                    prior_conviction_MF=if_else(prior_conviction_F==1|prior_conviction_M==1,1,0)) 
-# %>%
-#             group_by(person_id)%>%
-#               summarise(person_id=person_id,
-#                         prior_conviction_MF=if_else(sum(convicted)>0,1,0),
-#                         )
+                   is_violent=if_else(substr(statute,1,3) %in% c("777","782","784","806","812","825","827"),1,0),
+                   
+                   prior_conviction_F=if_else(is_felony==1&convicted==1,1,0),
+                   prior_conviction_M=if_else(is_misdem==1&convicted==1,1,0),
+                   prior_conviction_MF=if_else(prior_conviction_F==1|prior_conviction_M==1,1,0))%>%
+  
+            group_by(person_id)%>%
+              summarise(
+                        prior_conviction_F=if_else(sum(prior_conviction_F)>0,1,0),
+                        prior_conviction_M=if_else(sum(prior_conviction_M)>0,1,0),
+                        prior_conviction_MF=if_else(sum(prior_conviction_MF)>0,1,0),
+                        violent_conviction=if_else(sum(is_violent)>0,1,0)
+                        )
 
 
 
 View(arnold2)
                       
-```
-
-more dev code
-```{r}
-d1 <- data_frame(
-  x = letters[1:3],
-  y = LETTERS[1:3],
-  a = rnorm(3)
-  )
-
-d2 <- data_frame(
-  x2 = letters[3:1],
-  y2 = LETTERS[3:1],
-  b = rnorm(3)
-  )
-d1
-d2
-left_join(d1, d2, by = c("x" = "x2", "y" = "y2"))
 ```
 
 
