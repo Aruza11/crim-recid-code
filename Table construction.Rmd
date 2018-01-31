@@ -36,8 +36,8 @@ people_df<-tbl(db,"people")
 
 
 ```{r}
-#fail_to_appear<-read.csv("Data tables/fail_to_appear.csv")
-#convictions<-read.csv("Data tables/convicted_from_disps.csv")
+#fail_to_appear<-read.csv("C:/Users/Caroline Wang/OneDrive/Duke/Criminal Recidivism/Data tables/fail_to_appear.csv")
+convictions<-read.csv("C:/Users/Caroline Wang/OneDrive/Duke/Criminal Recidivism/Data tables/convicted_from_disps.csv")
 ```
 
 Creating a new df from a subset of compas_df, altering names of some columns
@@ -108,7 +108,13 @@ statute=dfnew%>%
 #sort(distinct(statute$truncated))
 #distinct(filter(statute,truncated=="OCS"))
 
-#filter(dfnew,statute=="ODRD631")
+filter(dfnew,statute=="ODRD631")
+
+#ODVD463
+dfnew%>%filter(statute=="OHDD58")%>%
+        select(first,last,case_number)%>%
+        View()
+
   
 ```
 
@@ -289,25 +295,26 @@ PSA Features: Convictions
 .	Prior violent conviction
 
 a table with person_id,case_number,charge_number,charge_degree,convicted or not
-ISSUE: Missing many dispositions; must reparse XML strings
-Chose to interpret prior conviction(misdem or felony) as ANY conviction--is this correct?
+ISSUE: Missing many dispositions; must reparse XML string
+  Use case 11020953CF10A to debug this issue; should have 3 charges but I currently only have information for the first 
+Question: isn't the prior conviction (M/F) feature derived from the above two? How is it different?
 ```{r}
 convictions_subset<-convictions%>%
-                      select(person_id,case_num,Charge,convicted)%>%  
-                      rename(case_number=case_num,charge_number=Charge)  
+                      select(case_number,Charge,convicted)%>%  
+                      rename(charge_number=Charge)  
 arnold2<-dfnew%>%
             select(person_id,case_number,charge_number,charge_degree,charge,statute)%>%
             distinct()%>%
             as_data_frame()%>%
-            left_join(convictions_subset, by=c("person_id","case_number","charge_number"))%>%
+            left_join(convictions_subset, by=c("case_number","charge_number"))
             mutate(is_felony = if_else(substr(charge_degree,2,2)=="F",1,0),
                    is_misdem= if_else(substr(charge_degree,2,2)=="M",1,0),
                    is_violent=if_else(substr(statute,1,3) %in% c("777","782","784","806","812","825","827"),1,0),
-                   
+
                    prior_conviction_F=if_else(is_felony==1&convicted==1,1,0),
                    prior_conviction_M=if_else(is_misdem==1&convicted==1,1,0),
                    prior_conviction_MF=if_else(prior_conviction_F==1|prior_conviction_M==1,1,0))%>%
-  
+
             group_by(person_id)%>%
               summarise(
                         prior_conviction_F=if_else(sum(prior_conviction_F)>0,1,0),
@@ -318,7 +325,7 @@ arnold2<-dfnew%>%
 
 
 
-View(arnold2)
+View(head(arnold2))
                       
 ```
 
