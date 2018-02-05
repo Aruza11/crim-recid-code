@@ -77,18 +77,19 @@ dfnew=dfnew%>%
 
 ```
 
+NOTE: DFNEW ONLY CONTAINS INFORMATION FROM BEFORE THE COMPAS EVALUATION (so we can perform predictive analysis on the code)
 
 
-
-Recompute some of Compas' data and joining to dfnew (eventually)
+Storing dfnew in Data tables folder
 ```{r}
-
+setwd("C:/Users/Caroline Wang/OneDrive/Duke/Criminal Recidivism/Data tables")
+write.csv(dfnew,"dfnew.csv")
 ```
 
 
 **features table code being; generated from dfnew**
 
-Checking for all unique values for each relevant column
+Checking for all unique values for each relevant column. Also trying to figure out what the violent statutes are. 
 ```{r}
 #marital status: single and married 
 mar=as_data_frame(distinct(select(dfnew, marital_status)))
@@ -111,6 +112,7 @@ statute=dfnew%>%
 filter(dfnew,statute=="ODRD631")
 
 #ODVD463
+
 dfnew%>%filter(statute=="OHDD58")%>%
         select(first,last,case_number)%>%
         View()
@@ -136,75 +138,78 @@ features$marital_status=as.numeric(as.character(features$marital_status))
 features$race=factor(features$race, levels=c("Caucasian", "African-American","Hispanic","Asian","Native American","Other"), labels=c(1,2,3,4,5,6))
 features$race=as.numeric(as.character(features$race))
 
-features
 ```
 
 dynamic features-variables which will have a numeric value, and describe the charges/cases/crimes
-Problem: must distinguish distinct cases to get unique felonies
-PERFORM CHECK (use person id 75-408 felonies??)
+*Possible issue (looked at person id 75): some people have what looks like duplicate charges but different case numbers. Are these actually different cases or is this a case where the same case got given 2 different case numbers? 
+**Q: is checking #prison_in_custody enough to determine prison visits?
+**Q: prison_time/jail_time: what if they were in jail 2x the exact same amount of time?
+**Note to self: (11714-11109)/11109 people were screened 2x
+**distinct(person_id,charge_degree,case_number,charge) is how I have decided to distinguish unique "events" for each person. Check this criterion. 
+
+dynamic_fel: 
+.	felony count per person
+.	checking for number of felonies that occurred at most 5 yrs before the screening date
+
+dynamic_incarceration:
+.	number of prison visits
+.	total prison time
+.	number of jail visits
+.	total jail time
+.	number of cases 
+
 ```{r}
 
-dynamic_fel_incarceration=dfnew %>%
-           distinct(person_id,offense_date,screening_date,date_charge_filed,charge_degree,prison_in_custody,prison_out_custody,jail_in_custody,jail_out_custody,case_number)%>%
-# 
-#            mutate(beforeCOMPAS=if_else(offense_date<=screening_date,1,0))%>%
-#            filter(beforeCOMPAS==1)%>%
+dynamic_fel=dfnew%>%
+           distinct(person_id,charge_degree,case_number,charge,screening_date,date_charge_filed) %>%
            mutate(is_felony = if_else(substr(charge_degree,2,2)=="F",1,0)) %>%
-   #        filter(is_felony==1)%>%
-#           mutate(is_fel_5yrs=if_else(screening_date-date_charge_filed<=5,1,0))%>%
+           filter(is_felony==1)%>%
+           mutate(less_5yr = if_else(screening_date-date_charge_filed<=5,1,0))%>%
+  
+           distinct(person_id,charge_degree,case_number,charge,is_felony,less_5yr) 
+           group_by(person_id) %>%
+             summarize(felony_count_person=sum(is_felony),
+                       yrs5_felcount_person = sum(less_5yr))
+ 
+dynamic_fel_incarceration=dfnew %>%
+           distinct(person_id,prison_in_custody,prison_out_custody,jail_in_custody,jail_out_custody,case_number)%>%
+           group_by(person_id) %>%
+              summarize(prison_visits=n_distinct(prison_in_custody),
+                        prison_time=sum(distinct(prison_out_custody-prison_in_custody)),
 
-              group_by(person_id) %>%
-                 summarize(felony_count_person = sum(is_felony),
-  #                         fel_count_5yrs=sum(is_fel_5yrs),
-                           prison_visits=n_distinct(prison_in_custody),
-                           prison_time=sum(distinct(prison_out_custody-prison_in_custody)),
+                        jail_visits=n_distinct(jail_in_custody),
+                        jail_time=sum(distinct(jail_out_custody-jail_in_custody)),
+                        numcases=n_distinct(case_number)
+                       )
 
-                           jail_visits=n_distinct(jail_in_custody),
-                           jail_time=sum(distinct(jail_out_custody-jail_in_custody)),
-                           numcases=n_distinct(case_number)
-                    
-                 )
 
-#dynamic1=dynamic1%>%
- #        mutate(jailandprison_visits=prison_visits+jail_visits)%>%
-  #       mutate(jailandprison_time=prison_time+jail_time)
+# testperson=filter(dfnew,person_id==75)
+# numfel=distinct(testperson,person_id,offense_date,charge_degree,prison_in_custody,prison_out_custody,jail_in_custody,jail_out_custody,case_number,charge)%>%
+#               mutate(is_felony = if_else(substr(charge_degree,2,2)=="F",1,0)) %>%
+#               distinct(is_felony,case_number,charge_degree,charge)
+                 # summarize(felony_count_person = distinct(is_felony,case_number,charge_degree),is_felony))
 
-dynamic_fel_incarceration
-summarise(dynamic_fel_incarceration, Average = mean(numcases, na.rm = T))
-#Q: is checking #prison_in_custody enough to determine prison visits? 
-#Q: prison_time/jail_time: what if they were in jail 2x the exact same amount of time?
-
-```
-
-```{r}
-#checking for number of felonies that occurred at most 5 yrs before the screening date
-dynamic_fel5=dfnew%>%
-           distinct(person_id,offense_date,screening_date,charge_degree,date_charge_filed)%>%
-           # mutate(beforeCOMPAS=if_else(offense_date<=screening_date,1,0))%>%
-             mutate(is_felony = if_else(substr(charge_degree,2,2)=="F",1,0)) %>%
-           # filter(beforeCOMPAS==1)%>%
-           filter(screening_date-date_charge_filed<=5)%>%
-              group_by(person_id) %>%
-                 summarize(yrs5_felcount_person = sum(is_felony)
-                        
-                           )
-dynamic_fel5
+#summarise(dynamic_fel_incarceration, Average = mean(numcases, na.rm = T))
 
 ```
+
 
 Calculating drug offenses in past 5 years
-```{r}
-#idea: 1) Filter by statute number
-#      2)include date in summarize table to get 5 yr drug offense
+*categorized as drug offense if it was Statute 893
+*same method as dynamic_fel
 
+dynamic_drug: 
+.	# drug offenses per person
+.	# drug offenses within 5 years of COMPAS screening date
+```{r}
 dynamic_drug=dfnew%>%
-           distinct(person_id,offense_date,screening_date,date_charge_filed,statute)%>%
-           # mutate(beforeCOMPAS=if_else(offense_date<=screening_date,1,0))%>%
+           distinct(person_id,charge_degree,case_number,charge,screening_date,date_charge_filed,statute)%>%
            mutate(is_drug= if_else(substr(statute,1,3)=="893",1,0)) %>%
-           # filter(beforeCOMPAS==1)%>%
            filter(is_drug==1)%>%
            mutate(is_drug_5yrs=if_else(screening_date-date_charge_filed<=5,1,0))%>%
-              group_by(person_id) %>%
+           distinct(person_id,charge_degree,case_number,charge,is_drug,is_drug_5yrs) 
+
+           group_by(person_id) %>%
                  summarize(drug_count_person = sum(is_drug),
                            drug_count_5yrs=sum(is_drug_5yrs)
                            )
@@ -214,16 +219,18 @@ dynamic_drug
 
 ```{r}
 dynamic_misdem=dfnew%>%
-           distinct(person_id,offense_date,screening_date,date_charge_filed,charge_degree)%>%
-           # mutate(beforeCOMPAS=if_else(offense_date<=screening_date,1,0))%>%
+           distinct(person_id,charge_degree,case_number,charge,screening_date,date_charge_filed)%>%
+  
            mutate(is_misdem= if_else(substr(charge_degree,2,2)=="M",1,0)) %>%
-           # filter(beforeCOMPAS==1)%>%
            filter(is_misdem==1)%>%
            mutate(is_misdem_5yrs=if_else(screening_date-date_charge_filed<=5,1,0))%>%
-              group_by(person_id) %>%
-                 summarize(misdem_count_person = sum(is_misdem),
-                           misdem_count_5yrs=sum(is_misdem_5yrs)
-                           )
+  
+           distinct(person_id,charge_degree,case_number,charge,is_misdem,is_misdem_5yrs) 
+
+           group_by(person_id) %>%
+             summarize(misdem_count_person = sum(is_misdem),
+                       misdem_count_5yrs=sum(is_misdem_5yrs)
+                      )
 dynamic_misdem
 
 ```
@@ -239,7 +246,6 @@ Arnold Foundation PSA features
 
 .	Prior misdemeanor conviction 
 .	Prior felony conviction 
-.	Prior conviction (misdemeanor or felony) 
 .	Prior violent conviction
 
 .	Prior failure to appear pretrial in the past two years 
@@ -247,9 +253,10 @@ Arnold Foundation PSA features
 
 MUST DEAL WITH: person_id.x!=person_id.y,NAs (possibly requery?)
 
-PSA Features: age at current arrest, current violent offence, current violent&20 or younger, prior sentence to incarceration 
 Question: by prior sentence to incarceration, do they mean prison or jail? 
 Here, will take to be prison because jail is short-term; also, I think everybody in this dataset has gone to jail, so incarceration would not be a useful feature if I counted jail. 
+
+arnold1: age at current arrest, current violent offence, current violent&20 or younger, prior sentence to incarceration 
 ```{r}
 #CHECK IF SOMEBODY DOESN'T HAVE ANY OFFENSES WITHIN 5 DAYS
 arnold1=dfnew%>%
@@ -277,15 +284,13 @@ arnold1=dfnew%>%
            #                 )
 View(arnold1)
 
-felonystatutes=dfnew%>%
-           distinct(person_id,offense_date,screening_date,date_charge_filed,charge_degree,dob,statute)%>%
-           # mutate(beforeCOMPAS=if_else(offense_date<=screening_date,1,0))%>%
-           mutate(is_felony = if_else(substr(charge_degree,2,2)=="F",1,0)) %>%
-           filter(is_felony==1)%>%
-           # filter(beforeCOMPAS==1)
-          # distinct(statute) #why doesn't this work?
-View(distinct(select(felonystatutes,statute)))
-#save as CSV?
+#Not really sure what I did this for?
+# felonystatutes=dfnew%>%
+#            distinct(person_id,offense_date,screening_date,date_charge_filed,charge_degree,dob,statute)%>%
+#            mutate(is_felony = if_else(substr(charge_degree,2,2)=="F",1,0)) %>%
+#            filter(is_felony==1)
+#   
+# View(distinct(select(felonystatutes,statute)))
 
 ```
 PSA Features: Convictions
@@ -381,6 +386,12 @@ View(filter(test,fail_appeared==1))
 
 combine all features (static and dynamic)
 ```{r}
+
+```
+
+Write features table to working directory because I want intermediate versions of this table synced on Github  
+```{r}
+write.csv(features,"features.csv")
 
 ```
 
