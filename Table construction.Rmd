@@ -162,6 +162,8 @@ dynamic_incarceration:
 
 dynamic_fel=dfnew%>%
            distinct(person_id,charge_degree,case_number,charge,screening_date,date_charge_filed) %>%
+           as_data_frame()%>%
+
            mutate(is_felony = if_else(substr(charge_degree,2,2)=="F",1,0)) %>%
            filter(is_felony==1)%>%
            mutate(less_5yr = if_else(screening_date-date_charge_filed<=5,1,0))%>%
@@ -171,7 +173,7 @@ dynamic_fel=dfnew%>%
              summarize(felony_count_person=sum(is_felony),
                        yrs5_felcount_person = sum(less_5yr))
  
-dynamic_fel_incarceration=dfnew %>%
+dynamic_incarceration=dfnew %>%
            distinct(person_id,prison_in_custody,prison_out_custody,jail_in_custody,jail_out_custody,case_number)%>%
            group_by(person_id) %>%
               summarize(prison_visits=n_distinct(prison_in_custody),
@@ -204,6 +206,8 @@ dynamic_drug:
 ```{r}
 dynamic_drug=dfnew%>%
            distinct(person_id,charge_degree,case_number,charge,screening_date,date_charge_filed,statute)%>%
+           as_data_frame()%>%
+  
            mutate(is_drug= if_else(substr(statute,1,3)=="893",1,0)) %>%
            filter(is_drug==1)%>%
            mutate(is_drug_5yrs=if_else(screening_date-date_charge_filed<=5,1,0))%>%
@@ -217,9 +221,13 @@ dynamic_drug
 
 ```
 
+dynamic_misdem: 
+.	# misdemeanors per person
+.	# misdemeanors within 5 years of COMPAS screening date
 ```{r}
 dynamic_misdem=dfnew%>%
            distinct(person_id,charge_degree,case_number,charge,screening_date,date_charge_filed)%>%
+           as_data_frame()%>%
   
            mutate(is_misdem= if_else(substr(charge_degree,2,2)=="M",1,0)) %>%
            filter(is_misdem==1)%>%
@@ -253,36 +261,39 @@ Arnold Foundation PSA features
 
 MUST DEAL WITH: person_id.x!=person_id.y,NAs (possibly requery?)
 
-Question: by prior sentence to incarceration, do they mean prison or jail? 
-Here, will take to be prison because jail is short-term; also, I think everybody in this dataset has gone to jail, so incarceration would not be a useful feature if I counted jail. 
+I will take "prior sentence to incarceration" to mean prison because jail is short-term; also, I think everybody in this dataset has gone to jail (because they have COMPAS evaluations), so incarceration would not be a useful feature if I counted jail. 
+I will take "screening date" as current, and any offenses which occurred up to 5 days before this screening date as current offenses. 
 
 arnold1: age at current arrest, current violent offence, current violent&20 or younger, prior sentence to incarceration 
+Code status 2/4/18: code seems to work, but I suspect that I may have handled something wrong. 
 ```{r}
 #CHECK IF SOMEBODY DOESN'T HAVE ANY OFFENSES WITHIN 5 DAYS
+
 arnold1=dfnew%>%
            distinct(person_id,offense_date,screening_date,
                     charge_degree,dob,statute,prison_in_custody,prison_out_custody)%>%
-            mutate(current_age=screening_date-dob,
-                  twenty_or_younger=if_else(current_age<=20,1,0))
-           #        is_violent=if_else(substr(statute,1,3) %in% c("777","782","784","806","812","825","827"),1,0),
-           #        days_from_compas=screening_date-offense_date,
-           #        is_current=if_else(days_from_compas<5,1,0),
-           #        in_prison=if_else(prison_out_custody-prison_in_custody>0,1,0)
-           #        )%>%
-           # filter(is_current==1)%>%
-           # as_data_frame()%>%
-           # mutate(current_violent=if_else(is_violent==1,1,0),
-           #        current_violent_twenty=if_else(is_violent==1&twenty_or_younger==1,1,0)
-           #        )%>%
-           # 
-           # group_by(person_id) %>%
-           #    summarize(current_age=max(current_age),
-           #              current_violent=if_else(sum(current_violent)>0,1,0),
-           #              current_violent_twenty=if_else(sum(current_violent_twenty)>0,1,0),
-           #              prior_incarceration=if_else(sum(in_prison)>0,1,0)
-           # 
-           #                 )
-View(arnold1)
+           mutate(current_age=(screening_date-dob),
+                  is_violent=if_else(substr(statute,1,5) %in% c("777","782","784","806","812","825","827"),1,0),
+                  days_from_compas=screening_date-offense_date,
+                  is_current=if_else(days_from_compas<3,1,0),
+                  in_prison=if_else(prison_out_custody-prison_in_custody>0,1,0),
+                  twenty_or_less=if_else(current_age<=20,1,0)
+
+                  )%>%
+
+           filter(is_current==1)%>%
+           as_data_frame()%>%
+           mutate(current_violent_offense=if_else(is_violent==1,1,0),
+                  current_violent_twenty=if_else(is_violent==1&twenty_or_less==1,1,0)
+                  )%>%
+
+           group_by(person_id) %>%
+              summarize(current_age=max(current_age),
+                        current_violent_offense=if_else(sum(current_violent_offense)>0,1,0),
+                        current_violent_twenty=if_else(sum(current_violent_twenty)>0,1,0),
+                        prior_incarceration=if_else(sum(in_prison)>0,1,0)
+                        )
+View(head(arnold1))
 
 #Not really sure what I did this for?
 # felonystatutes=dfnew%>%
@@ -293,38 +304,40 @@ View(arnold1)
 # View(distinct(select(felonystatutes,statute)))
 
 ```
+
+
 PSA Features: Convictions
 .	Prior misdemeanor conviction 
 .	Prior felony conviction 
-.	Prior conviction (misdemeanor or felony) 
 .	Prior violent conviction
 
 a table with person_id,case_number,charge_number,charge_degree,convicted or not
 ISSUE: Missing many dispositions; must reparse XML string
+  
   Use case 11020953CF10A to debug this issue; should have 3 charges but I currently only have information for the first 
-Question: isn't the prior conviction (M/F) feature derived from the above two? How is it different?
+Code status (2/4/18): this chunk works, but because my convictions parsing is flawed, it has many NAs
 ```{r}
 convictions_subset<-convictions%>%
                       select(case_number,Charge,convicted)%>%  
                       rename(charge_number=Charge)  
 arnold2<-dfnew%>%
-            select(person_id,case_number,charge_number,charge_degree,charge,statute)%>%
-            distinct()%>%
+            distinct(person_id,case_number,charge_number,charge_degree,charge,statute)%>%
+  #must be data frame because have to left_join same 2 data structure
             as_data_frame()%>%
-            left_join(convictions_subset, by=c("case_number","charge_number"))
+            left_join(convictions_subset, by=c("case_number","charge_number"))%>%
+
             mutate(is_felony = if_else(substr(charge_degree,2,2)=="F",1,0),
                    is_misdem= if_else(substr(charge_degree,2,2)=="M",1,0),
                    is_violent=if_else(substr(statute,1,3) %in% c("777","782","784","806","812","825","827"),1,0),
 
                    prior_conviction_F=if_else(is_felony==1&convicted==1,1,0),
                    prior_conviction_M=if_else(is_misdem==1&convicted==1,1,0),
-                   prior_conviction_MF=if_else(prior_conviction_F==1|prior_conviction_M==1,1,0))%>%
+                   violent_conviction=if_else(is_violent==1&convicted==1,1,0))%>%
 
             group_by(person_id)%>%
               summarise(
                         prior_conviction_F=if_else(sum(prior_conviction_F)>0,1,0),
                         prior_conviction_M=if_else(sum(prior_conviction_M)>0,1,0),
-                        prior_conviction_MF=if_else(sum(prior_conviction_MF)>0,1,0),
                         violent_conviction=if_else(sum(is_violent)>0,1,0)
                         )
 
@@ -338,6 +351,7 @@ View(head(arnold2))
 PSA Features: Failure to appear 
 .	Prior failure to appear pretrial in the past two years 
 .	Prior failure to appear pretrial older than two years 
+
 Possible issue:  person_id.x!=person_id.y. Check why. 
 ```{r}
 #check using event date from other dataset?
@@ -384,8 +398,17 @@ View(filter(test,fail_appeared==1))
 ```
 
 
-combine all features (static and dynamic)
+Merged all features tables together(static, dynamic, arnold)
+
 ```{r}
+features<-features%>%
+            left_join(dynamic_fel,by=person_id)%>%
+            left_join(dynamic_incarceration,by=person_id)%>%
+            left_join(dynamic_misdem,by=person_id)%>%
+            left_join(dynamic_misdem,by=person_id)%>%
+            left_join(arnold1,by=person_id)%>%
+            left_join(arnold2,by=person_id)%>%
+            left_join(arnold3,by=person_id)
 
 ```
 
