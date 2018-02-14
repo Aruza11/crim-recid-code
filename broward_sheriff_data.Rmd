@@ -1,0 +1,49 @@
+---
+title: "Broward Sheriff Data Comparison"
+output: html_notebook
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Ctrl+Shift+Enter*. 
+
+Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Ctrl+Alt+I*.
+
+When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Ctrl+Shift+K* to preview the HTML file).
+
+
+
+```{r}
+library(tidyverse)
+library(magrittr)
+```
+
+Reading in pretrial prescreen dataset which the Broward Sheriff's Office shared with ProPublica
+```{r}
+pretrialscreen_2013_2014<-read.csv("C:/Users/Caroline Wang/OneDrive/Duke/Criminal Recidivism/Data tables/Compas_Jan2013_Dec2014_LegalRequest_PRETRIAL AND PRESCREEN.csv")
+
+pretrialscreen_2014_2017<-read.csv("C:/Users/Caroline Wang/OneDrive/Duke/Criminal Recidivism/Data tables/Compas_Jan2014_Dec2017_LegalRequest_PRETRIAL AND PRESCREEN.csv")
+
+pretrialscreen<-bind_rows(pretrialscreen_2013_2014,pretrialscreen_2014_2017)
+# rm(pretrialscreen_2013_2014,pretrialscreen_2014_2017)
+
+```
+
+```{r}
+scattertbl1<-filter(pretrialscreen,DisplayText=="Risk of Violence")
+scattertbl2<-filter(pretrialscreen,DisplayText=="Risk of Recidivism")
+scattertbl3<-filter(pretrialscreen,DisplayText=="Risk of Failure to Appear")
+
+ggplot(scattertbl1, aes(x=RawScore, y=DecileScore)) +
+     geom_point(shape=1)     
+
+ggplot(scattertbl2, aes(x=RawScore, y=DecileScore)) +
+     geom_point(shape=1)  
+
+ggplot(scattertbl3, aes(x=RawScore, y=DecileScore)) +
+     geom_point(shape=1)     
+
+ggplot(pretrialscreen, aes(x=RawScore, y=DecileScore)) +
+     geom_point(shape=1)     
+```
+
