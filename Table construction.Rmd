@@ -449,15 +449,15 @@ View(filter(test,fail_appeared==1))
 
 Calculating recidivation from the dfnew entries after the COMPAS score was calculated. 
 ProPublica/Northpointe's def: 
-In a 2009 study examining the predictive power of its COMPAS score, Northpointe defined recidivism as "a finger-printable arrest involving a charge and a filing for any uniform crime reporting (UCR) code." We interpreted that to mean a criminal offense that resulted in a **jail booking** and took place after the crime for which the person was COMPAS scored.
+In???a 2009 study examining the predictive power of its COMPAS score, Northpointe defined recidivism as "a finger-printable arrest involving a charge and a filing for any uniform crime reporting (UCR) code." We interpreted that to mean a criminal offense that resulted in a **jail booking** and took place after the crime for which the person was COMPAS scored.
 
 It was not always clear, however, which criminal case was associated with an individual's COMPAS score. To match COMPAS scores with accompanying cases, we considered cases with arrest dates or charge dates within 30 days of a COMPAS assessment being conducted. In some instances, we could not find any corresponding charges to COMPAS scores. We removed those cases from our analysis.
 Next, we sought to determine if a person had been charged with a new crime subsequent to crime for which they were COMPAS screened. We *did not count traffic tickets and some municipal ordinance violations as recidivism.* We did not count as recidivists people who were arrested for *failing to appear at their court hearings*, or people who were *later charged with a crime that occurred prior to their COMPAS screening*.
 
-For *violent recidivism*, we used the FBI's definition of violent crime, a category that includes murder, manslaughter, forcible rape, robbery and aggravated assault.
+For *violent recidivism*, we used the???FBI's definition of violent crime, a category that includes murder, manslaughter, forcible rape, robbery and aggravated assault.
 
 For most of our analysis, we defined recidivism as a *new arrest within two years*. We based this decision on Northpointe's practitioners guide, which says that its recidivism score is meant to predict "a new misdemeanor or felony offense within two years of the COMPAS administration date."
-In addition, a recent study of 25,000 federal prisoners' recidivism rates by the U.S. Sentencing Commission, which shows that most recidivists commit a new crime within the first two years after release (if they are going to commit a crime at all).
+In addition, a???recent study of 25,000 federal prisoners' recidivism???rates by the U.S. Sentencing Commission, which shows that most recidivists commit a new crime within the first two years after release (if they are going to commit a crime at all).
 
 2 yr predictions, 3 yr predictions, arrested, whether went to jail, convictions, felony/misdemeanor/traffic, drug, violent, 
 
@@ -588,4 +588,3 @@ Check validity of logical operator "or" in graph code
 Get prison/jail time lengths to look bigger--change scale? 
 
 To do: proofread all of code, compute whether or not they recidivated (y_recidivated). Drugs, traffic crimes, broward-sheriff-data, add compas score, check latest screening date. Question: how do I define recidivated? Use Arnold PSA's definition of recidivation. 
-

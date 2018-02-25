@@ -16,6 +16,8 @@ When you save the notebook, an HTML file containing the code and output will be 
 ```{r}
 library(tidyverse)
 library(magrittr)
+setwd("C:/Users/Caroline Wang/OneDrive/Duke/Criminal Recidivism/crim-recid-code")
+
 ```
 
 Reading in pretrial prescreen dataset which the Broward Sheriff's Office shared with ProPublica
@@ -28,7 +30,13 @@ pretrialscreen<-bind_rows(pretrialscreen_2013_2014,pretrialscreen_2014_2017)
 # pretrialscreen$Screening_Date<-as.Date(pretrialscreen$Screening_Date,format="%m/%d/%Y %T")
 #the above doesn't work for some reason
 
- rm(pretrialscreen_2013_2014,pretrialscreen_2014_2017)
+rm(pretrialscreen_2013_2014,pretrialscreen_2014_2017)
+ 
+scattertbl1<-filter(pretrialscreen,DisplayText=="Risk of Violence")
+scattertbl2<-filter(pretrialscreen,DisplayText=="Risk of Recidivism")
+scattertbl3<-filter(pretrialscreen,DisplayText=="Risk of Failure to Appear")
+
+featurestbl<-read.csv("features.csv")
 
 ```
 
@@ -40,9 +48,6 @@ ggplot(pretrialscreen, aes(x=RawScore, y=DecileScore)) +
 boxplot(RawScore~DisplayText,data=pretrialscreen, main="Distribution of Raw Scores for Each Screening Type", xlab="DisplayText", ylab="RawScore")
 
 
-# scattertbl1<-filter(pretrialscreen,DisplayText=="Risk of Violence")
-# scattertbl2<-filter(pretrialscreen,DisplayText=="Risk of Recidivism")
-# scattertbl3<-filter(pretrialscreen,DisplayText=="Risk of Failure to Appear")
 
 print("mean,25th quartile, median, 75th quartile,min,max")
 print("Risk of Violence min max raw scores:")
@@ -125,5 +130,17 @@ DisplayText
 
 
 Age, number of priors, number of misdemeanors, number of felonies, expect a decision tree (scattered bunches on scatterplot)
-Plot people with similar criminal histories, plot age vs compas compas
-SImilar: similar number of  priors, similar number of offenses, 
+
+Plot people with similar criminal histories, plot age vs compas score
+Similar: similar number of  priors, similar number of offenses, 
+
+Issue: we only have the criminal history information for people in ProPublica's dataset, and ProPublica only looked at pretrial people. Therefore we can only look at the Compas algorithm for pretrial screening (and in fact, we will be looking at the features table I generated in an earlier bit of code)
+
+```{r}
+ggplot(featurestbl, aes(x=age, y=compas_score)) +
+     geom_point(shape=1)  +
+     ggtitle("Compas Score vs Age")
+
+```
+
+
