@@ -40,6 +40,15 @@ fail_to_appear<-read.csv("C:/Users/Caroline Wang/OneDrive/Duke/Criminal Recidivi
 convictions<-read.csv("C:/Users/Caroline Wang/OneDrive/Duke/Criminal Recidivism/Data tables/convicted_from_disps.csv")
 ```
 
+Writin individuals' compas score to file. I am doing this separately because I want the features table to be 1 row per person, which it cannot be if I add the compas scores (b/c each person has 3 scores for compas). *Note: some people have more than 1 set of COMPAS scores.*
+
+```{r}
+compas_df%>%
+    select(person_id,person_id, first, last, type_of_assessment, raw_score, decile_score)%>%
+    as_data_frame()%>%
+    write.csv("C:/Users/Caroline Wang/OneDrive/Duke/Criminal Recidivism/Data tables/compas_scores.csv")
+```
+
 Creating a new df from a subset of compas_df, altering names of some columns
 Starting with compas_df b/c I don't want people I don't have compas scores for
 ```{r}
@@ -70,10 +79,16 @@ dfnew=left_join(dfnew, chargenew, by="person_id")
 #Joined dfnew to relevant columns in prisonhistory_df
 prisonhistorynew=select(prisonhistory_df,person_id, in_custody, out_custody)
 prisonhistorynew=rename(prisonhistorynew,prison_in_custody=in_custody, prison_out_custody=out_custody)
-dfnew=dfnew%>%
+
+df_beforeCOMPAS=dfnew%>%
         left_join(.,prisonhistorynew, by="person_id")%>%
         mutate(beforeCOMPAS=if_else(offense_date<=screening_date,1,0))%>%
         filter(beforeCOMPAS==1)
+
+df_afterCOMPAS=dfnew%>%
+               left_join(.,prisonhistorynew, by="person_id")%>%
+               mutate(beforeCOMPAS=if_else(offense_date<=screening_date,1,0))%>%
+               filter(beforeCOMPAS==0)
 
 
 
@@ -90,7 +105,8 @@ Storing dfnew in Data tables folder
 Last wrote: 2/4/18; filtered s.t. beforeCOMPAS==1
 ```{r}
 #setwd("C:/Users/Caroline Wang/OneDrive/Duke/Criminal Recidivism/Data tables")
-#write.csv(dfnew,"dfnew.csv")
+dfnew%>%as_data_frame()%>%
+        write.csv(dfnew,"dfnew.csv")
 ```
 
 
@@ -99,12 +115,12 @@ Last wrote: 2/4/18; filtered s.t. beforeCOMPAS==1
 Checking for all unique values for each relevant column. Also trying to figure out what the violent statutes are. 
 ```{r}
 #marital status: single and married 
-mar=as_data_frame(distinct(select(dfnew, marital_status)))
-sex=as_data_frame(distinct(select(dfnew, sex)))
-race=as_data_frame(distinct(select(dfnew, race)))
-charge_deg=as_data_frame(distinct(select(dfnew, charge_degree)))
-charge=as_data_frame(distinct(select(dfnew, charge)))
-statute=dfnew%>%
+mar=as_data_frame(distinct(select(df_beforeCOMPAS, marital_status)))
+sex=as_data_frame(distinct(select(df_beforeCOMPAS, sex)))
+race=as_data_frame(distinct(select(df_beforeCOMPAS, race)))
+charge_deg=as_data_frame(distinct(select(df_beforeCOMPAS, charge_degree)))
+charge=as_data_frame(distinct(select(df_beforeCOMPAS, charge)))
+statute=df_beforeCOMPAS%>%
           select(statute)%>%
           mutate(truncated=substr(statute,1,3),
           is_violent=if_else(substr(statute,1,3) %in% c("777","782","784","806","812","825","827"),1,0)
@@ -116,11 +132,11 @@ statute=dfnew%>%
 #sort(distinct(statute$truncated))
 #distinct(filter(statute,truncated=="OCS"))
 
-filter(dfnew,statute=="ODRD631")
+filter(df_beforeCOMPAS,statute=="ODRD631")
 
 #ODVD463
 
-dfnew%>%filter(statute=="OHDD58")%>%
+df_beforeCOMPAS%>%filter(statute=="OHDD58")%>%
         select(first,last,case_number)%>%
         View()
 
@@ -134,7 +150,7 @@ static features--variables unique to each person, and which  I must assign numbe
 #use levels(dataset$column) to check what the vectors are
 #should write a function for this later
 #should go through person by person using a while true loop 
-features=as_data_frame(distinct(dfnew, person_id, first,last,age,sex,marital_status,race))
+features=as_data_frame(distinct(df_beforeCOMPAS, person_id, first,last,age,sex,marital_status,race))
 
 features$sex=factor(features$sex, levels=c("Male", "Female"), labels=c(1,2))
 features$sex=as.numeric(as.character(features$sex))
@@ -173,7 +189,7 @@ dynamic_incarceration:
 
 ```{r}
 
-dynamic_fel=dfnew%>%
+dynamic_fel=df_beforeCOMPAS%>%
            distinct(person_id,charge_degree,case_number,charge,screening_date,date_charge_filed) %>%
 
            mutate(is_felony = if_else(substr(charge_degree,2,2)=="F",1,0)) %>%
@@ -188,7 +204,7 @@ dynamic_fel=dfnew%>%
                        yrs5_felcount_person = sum(less_5yr))
 
  
-dynamic_incarceration=dfnew %>%
+dynamic_incarceration=df_beforeCOMPAS %>%
                         distinct(person_id,prison_in_custody,prison_out_custody,jail_in_custody,jail_out_custody,case_number)%>%
                         mutate(prison_time=prison_out_custody-prison_in_custody,
                                jail_time=jail_out_custody-jail_in_custody)%>%
@@ -224,12 +240,12 @@ dynamic_drug:
 .	# drug offenses per person
 .	# drug offenses within 5 years of COMPAS screening date
 ```{r}
-dynamic_drug=dfnew%>%
+dynamic_drug=df_beforeCOMPAS%>%
                  distinct(person_id,charge_degree,case_number,charge,screening_date,date_charge_filed,statute)%>%
 
                  mutate(is_drug= if_else(substr(statute,1,3)=="893",1,0)) %>%
                  mutate(is_drug_5yrs=if_else(screening_date-date_charge_filed<=5,1,0))%>%
-                 distinct(person_id,charge_degree,case_number,charge,is_drug,is_drug_5yrs) %>%
+                 distinct(person_id,charge_dis_drug_5yrsegree,case_number,charge,is_drug,is_drug_5yrs) %>%
                  as_data_frame()%>%
 
                  group_by(person_id) %>%
@@ -244,7 +260,7 @@ dynamic_misdem:
 .	# misdemeanors per person
 .	# misdemeanors within 5 years of COMPAS screening date
 ```{r}
-dynamic_misdem=dfnew%>%
+dynamic_misdem=df_beforeCOMPAS%>%
                 distinct(person_id,charge_degree,case_number,charge,screening_date,date_charge_filed)%>%
                 mutate(is_misdem= if_else(substr(charge_degree,2,2)=="M",1,0)) %>%
                 mutate(is_misdem_5yrs=if_else(screening_date-date_charge_filed<=5,1,0))%>%
@@ -279,27 +295,25 @@ Arnold Foundation PSA features
 MUST DEAL WITH: person_id.x!=person_id.y,NAs (possibly requery?)
 
 I will take "prior sentence to incarceration" to mean prison because jail is short-term; also, I think everybody in this dataset has gone to jail (because they have COMPAS evaluations), so incarceration would not be a useful feature if I counted jail. 
-I will take "screening date" as current, and any offenses which occurred up to 5 days before this screening date as current offenses. 
+I will take "screening date" as current, and any offenses which occurred up to 30 days before this screening date as current offense (partially because 30 days seems reasonable to me and also to stay consistent with ProPublica's definition of recidivism, which defines a current case as within 30 days of the screening date).
 
 arnold1: age at current arrest, current violent offence, current violent&20 or younger, prior sentence to incarceration 
 Code status 2/4/18: code seems to work, but I suspect that I may have handled something wrong. 
 1) deal with NAs for prison incarceration (should appear as NA, NOT 0s)
 ```{r}
-#CHECK IF SOMEBODY DOESN'T HAVE ANY OFFENSES WITHIN 5 DAYS
+#CHECK IF SOMEBODY DOESN'T HAVE ANY OFFENSES WITHIN 30 DAYS
 
-arnold1=dfnew%>%
+arnold1=df_beforeCOMPAS%>%
            distinct(person_id,offense_date,screening_date,
                     charge_degree,dob,statute,prison_in_custody,prison_out_custody)%>%
            mutate(current_age=(screening_date-dob),
-                  is_violent=if_else(substr(statute,1,3) %in% c("777","782","784","806","812","825","827"),1,0),
+                  is_violent=if_else(substr(statute,1,3) %in% c("777","782","784","794","806","812","825","827"),1,0),
                   days_from_compas=screening_date-offense_date,
-                  is_current=if_else(days_from_compas<5,1,0),
+                  is_current=if_else(days_from_compas<30,1,0),
                   in_prison=if_else(prison_out_custody-prison_in_custody>0,1,0),
                   twenty_or_less=if_else(current_age<=20,1,0)
-
                   )%>%
 # 
-# # filter(is_current==1)%>%
            mutate(current_violent_offense=if_else(is_violent==1,1,0),
                   current_violent_twenty=if_else(is_violent==1&twenty_or_less==1,1,0)
                   )%>%
@@ -313,19 +327,12 @@ arnold1=dfnew%>%
                         )
 View(head(arnold1))
 
-#Not really sure what I did this for?
-# felonystatutes=dfnew%>%
-#            distinct(person_id,offense_date,screening_date,date_charge_filed,charge_degree,dob,statute)%>%
-#            mutate(is_felony = if_else(substr(charge_degree,2,2)=="F",1,0)) %>%
-#            filter(is_felony==1)
-#   
-# View(distinct(select(felonystatutes,statute)))
 
 ```
 
 Debug Arnold1
 ```{r}
-testarnold<-dfnew%>%
+testarnold<-df_beforeCOMPAS%>%
            distinct(person_id,screening_date,
                     ,dob,statute,prison_in_custody,prison_out_custody)%>%
            mutate(current_age=screening_date-dob)%>%
@@ -357,7 +364,7 @@ Code status (2/4/18): this chunk works, but because my convictions parsing is fl
 convictions_subset<-convictions%>%
                       select(case_number,Charge,convicted)%>%  
                       rename(charge_number=Charge)  
-arnold2<-dfnew%>%
+arnold2<-df_beforeCOMPAS%>%
             distinct(person_id,case_number,charge_number,charge_degree,charge,statute)%>%
   #must be data frame because have to left_join same 2 data structure
             as_data_frame()%>%
@@ -365,7 +372,7 @@ arnold2<-dfnew%>%
 
             mutate(is_felony = if_else(substr(charge_degree,2,2)=="F",1,0),
                    is_misdem= if_else(substr(charge_degree,2,2)=="M",1,0),
-                   is_violent=if_else(substr(statute,1,3) %in% c("777","782","784","806","812","825","827"),1,0),
+                   is_violent=if_else(substr(statute,1,3) %in% c("777","782","784","794","806","812","825","827"),1,0),
 
                    prior_conviction_F=if_else(is_felony==1&convicted==1,1,0),
                    prior_conviction_M=if_else(is_misdem==1&convicted==1,1,0),
@@ -398,7 +405,7 @@ distinct_fail_to_appear<-fail_to_appear%>%
                         rename(case_number=case_num)
 #Failure to appear pretrial in past 2 years
 
-arnold3<-dfnew%>%
+arnold3<-df_beforeCOMPAS%>%
         distinct(person_id,case_number,screening_date)%>%
         as_data_frame()%>%
         left_join(distinct_fail_to_appear,by="case_number")
@@ -440,6 +447,65 @@ View(filter(test,fail_appeared==1))
 ```
 
 
+Calculating recidivation from the dfnew entries after the COMPAS score was calculated. 
+ProPublica/Northpointe's def: 
+In a 2009 study examining the predictive power of its COMPAS score, Northpointe defined recidivism as "a finger-printable arrest involving a charge and a filing for any uniform crime reporting (UCR) code." We interpreted that to mean a criminal offense that resulted in a **jail booking** and took place after the crime for which the person was COMPAS scored.
+
+It was not always clear, however, which criminal case was associated with an individual's COMPAS score. To match COMPAS scores with accompanying cases, we considered cases with arrest dates or charge dates within 30 days of a COMPAS assessment being conducted. In some instances, we could not find any corresponding charges to COMPAS scores. We removed those cases from our analysis.
+Next, we sought to determine if a person had been charged with a new crime subsequent to crime for which they were COMPAS screened. We *did not count traffic tickets and some municipal ordinance violations as recidivism.* We did not count as recidivists people who were arrested for *failing to appear at their court hearings*, or people who were *later charged with a crime that occurred prior to their COMPAS screening*.
+
+For *violent recidivism*, we used the FBI's definition of violent crime, a category that includes murder, manslaughter, forcible rape, robbery and aggravated assault.
+
+For most of our analysis, we defined recidivism as a *new arrest within two years*. We based this decision on Northpointe's practitioners guide, which says that its recidivism score is meant to predict "a new misdemeanor or felony offense within two years of the COMPAS administration date."
+In addition, a recent study of 25,000 federal prisoners' recidivism rates by the U.S. Sentencing Commission, which shows that most recidivists commit a new crime within the first two years after release (if they are going to commit a crime at all).
+
+2 yr predictions, 3 yr predictions, arrested, whether went to jail, convictions, felony/misdemeanor/traffic, drug, violent, 
+
+Notes: 
+df_afterCOMPAS only has those cases which have offense_dates after the COMPAS screening date (computed in one of the first chunks). 
+*in jail*: they are counted as in jail if they entered jail more than 30 days after their screening date
+*violent recidivism*: Used Arnold PSA's definition of violent (very similar to the FBI's definition) to give each crime a violent/not violent label.
+*later charged with crime that occurred prior to COMPAS screening*: accounted for by the fact that I'm filtering by offense_date, not charge_date.
+*new arrest within two years*: offense_date-screening_date<=2
+
+Corrections to make: for the in-jail criteria, must correct it to accountf or NAs in prison
+
+```{r}
+recid<-df_afterCOMPAS%>%
+            distinct(person_id,case_number,charge_number,charge_degree,charge,statute,jail_in_custody,jail_out_custody,screening_date,offense_date)%>%
+            filter(!is.na(jail_in_custody))%>%
+            as_data_frame()
+  
+recid$screening_date<-as.Date(recid$screening_date,format = "%Y-%m-%d %T")
+recid$jail_in_custody<-as.Date(recid$jail_in_custody,format = "%Y-%m-%d %T")
+recid$jail_out_custody<-as.Date(recid$jail_out_custody,format = "%Y-%m-%d %T")
+recid$offense_date<-as.Date(recid$offense_date,format = "%Y-%m-%d %T")
+#converted to date class explicitly, date subtraction counts years
+recid<-recid%>%
+            mutate(is_felony = if_else(substr(charge_degree,2,2)=="F",1,0),
+                   is_misdem= if_else(substr(charge_degree,2,2)=="M",1,0),
+                   is_violent=if_else(substr(statute,1,3) %in% c("777","782","784","794","806","812","825","827"),1,0),
+                   jailtime_in_days=jail_out_custody-jail_in_custody,
+                   recid_jail=if_else((jail_in_custody-screening_date>30)&!is.na(jail_in_custody)&!is.na(screening_date),1,0),
+                   within_two_years=if_else(offense_date-screening_date<720,1,0),
+                   is_traffic = if_else(charge_degree=="(TCX)",1,0),
+                   is_municipal= if_else((!substr(statute,1,1)%in%c(0:9))&!is.na(statute),1,0),
+                   
+                   propub_recid=if_else((recid_jail==1&within_two_years==1&is_traffic==0&is_municipal==0),1,0),
+                   propub_violent_recid=if_else(propub_recid==1&is_violent==1,1,0)
+                   )%>%
+
+            group_by(person_id)%>%
+                summarise(propub_recid=if_else(sum(propub_recid)>0,1,0),
+                          propub_violent_recid=if_else(sum(propub_violent_recid)>0,1,0)
+
+                        )
+
+
+            
+```
+
+
 Merged all features tables together(static, dynamic, arnold)
 ```{r}
 
@@ -460,7 +526,6 @@ write.csv(features,"features.csv")
  
 ```
 
-To do: proofread all of code, compute whether or not they recidivated (y_recidivated). Drugs, traffic crimes, broward-sheriff-data, add compas score, check latest screenig date
 
 **data visualization dfs
 --use name as a parameter**
@@ -522,5 +587,5 @@ Work on displaying the degree of each charge above the charge pts
 Check validity of logical operator "or" in graph code
 Get prison/jail time lengths to look bigger--change scale? 
 
-Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Ctrl+Alt+I*.
-When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Ctrl+Shift+K* to preview the HTML file).
+To do: proofread all of code, compute whether or not they recidivated (y_recidivated). Drugs, traffic crimes, broward-sheriff-data, add compas score, check latest screening date. Question: how do I define recidivated? Use Arnold PSA's definition of recidivation. 
+

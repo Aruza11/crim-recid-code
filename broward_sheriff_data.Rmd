@@ -25,25 +25,105 @@ pretrialscreen_2013_2014<-read.csv("C:/Users/Caroline Wang/OneDrive/Duke/Crimina
 pretrialscreen_2014_2017<-read.csv("C:/Users/Caroline Wang/OneDrive/Duke/Criminal Recidivism/Data tables/Compas_Jan2014_Dec2017_LegalRequest_PRETRIAL AND PRESCREEN.csv")
 
 pretrialscreen<-bind_rows(pretrialscreen_2013_2014,pretrialscreen_2014_2017)
-# rm(pretrialscreen_2013_2014,pretrialscreen_2014_2017)
+# pretrialscreen$Screening_Date<-as.Date(pretrialscreen$Screening_Date,format="%m/%d/%Y %T")
+#the above doesn't work for some reason
+
+ rm(pretrialscreen_2013_2014,pretrialscreen_2014_2017)
 
 ```
 
 ```{r}
-scattertbl1<-filter(pretrialscreen,DisplayText=="Risk of Violence")
-scattertbl2<-filter(pretrialscreen,DisplayText=="Risk of Recidivism")
-scattertbl3<-filter(pretrialscreen,DisplayText=="Risk of Failure to Appear")
+ggplot(pretrialscreen, aes(x=RawScore, y=DecileScore)) +
+     geom_point(shape=1)  +
+     ggtitle("Pretrial Prescreen Dataset")
+
+boxplot(RawScore~DisplayText,data=pretrialscreen, main="Distribution of Raw Scores for Each Screening Type", xlab="DisplayText", ylab="RawScore")
+
+
+# scattertbl1<-filter(pretrialscreen,DisplayText=="Risk of Violence")
+# scattertbl2<-filter(pretrialscreen,DisplayText=="Risk of Recidivism")
+# scattertbl3<-filter(pretrialscreen,DisplayText=="Risk of Failure to Appear")
+
+print("mean,25th quartile, median, 75th quartile,min,max")
+print("Risk of Violence min max raw scores:")
+fivenum(scattertbl1$RawScore)
+
 
 ggplot(scattertbl1, aes(x=RawScore, y=DecileScore)) +
-     geom_point(shape=1)     
+     geom_point(shape=1)  +
+     ggtitle("Risk of Violence Scores")
+
+print("Risk of Recidivism min max raw scores:")
+fivenum(scattertbl2$RawScore)
 
 ggplot(scattertbl2, aes(x=RawScore, y=DecileScore)) +
-     geom_point(shape=1)  
+     geom_point(shape=1)  +
+     ggtitle("Risk of Recidivism Scores")
+
+
+print("Risk of Failure to Appear min max raw scores:")
+fivenum(scattertbl1$RawScore)
 
 ggplot(scattertbl3, aes(x=RawScore, y=DecileScore)) +
-     geom_point(shape=1)     
+     geom_point(shape=1)  +
+     ggtitle("Risk of Failure to Appear Scores")
 
-ggplot(pretrialscreen, aes(x=RawScore, y=DecileScore)) +
-     geom_point(shape=1)     
+
+
 ```
 
+Comparison with data from ProPublica, more summary statistics
+```{r}
+pretrialscreen%>%
+        select(LegalStatus)%>%
+        unique()
+
+pretrialscreen%>%
+        select(AssessmentReason)%>%
+        unique()
+
+pretrialscreen%>%
+        select(DisplayText)%>%
+        unique()
+
+
+nonprescreen=filter(pretrialscreen,LegalStatus!="Pretrial")
+prescreen=filter(pretrialscreen,LegalStatus=="Pretrial")
+#compare to people from propublica dataset 
+
+print("min max Screening Dates")
+min(pretrialscreen$Screening_Date)
+max(pretrialscreen$Screening_Date)
+
+
+#people who have same raw score, but different decile score. Work with scattertbl3 first, because has integer score values 
+
+# filter(scattertbl3, )
+
+```
+
+LegalStatus
+<chr>
+1	Conditional Release			
+10	Post Sentence			
+205	Pretrial			
+43143	Other			
+4 rows
+
+AssessmentReason
+<fctr>
+1	Intake			
+1 row
+ 
+ 
+DisplayText
+<fctr>
+1	Risk of Violence			
+2	Risk of Recidivism			
+3	Risk of Failure to Appear			
+3 rows
+
+
+Age, number of priors, number of misdemeanors, number of felonies, expect a decision tree (scattered bunches on scatterplot)
+Plot people with similar criminal histories, plot age vs compas compas
+SImilar: similar number of  priors, similar number of offenses, 
