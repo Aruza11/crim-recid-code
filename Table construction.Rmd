@@ -11,7 +11,9 @@ library(stringr)
 library(tidyverse)
   #includes core: ggplot2,dplyr,tidyr,readr,purrr,tibble
 library(magrittr)
- 
+library(lubridate)
+setwd("C:/Users/Caroline Wang/OneDrive/Duke/Criminal Recidivism/crim-recid-code")
+
 
 ```
 
@@ -43,10 +45,10 @@ convictions<-read.csv("C:/Users/Caroline Wang/OneDrive/Duke/Criminal Recidivism/
 Writin individuals' compas score to file. I am doing this separately because I want the features table to be 1 row per person, which it cannot be if I add the compas scores (b/c each person has 3 scores for compas). *Note: some people have more than 1 set of COMPAS scores.*
 
 ```{r}
-compas_df%>%
-    select(person_id,person_id, first, last, type_of_assessment, raw_score, decile_score)%>%
-    as_data_frame()%>%
-    write.csv("C:/Users/Caroline Wang/OneDrive/Duke/Criminal Recidivism/Data tables/compas_scores.csv")
+# compas_df%>%
+    # select(person_id,person_id, first, last, type_of_assessment, raw_score, decile_score)%>%
+    # as_data_frame()%>%
+    # write.csv("C:/Users/Caroline Wang/OneDrive/Duke/Criminal Recidivism/Data tables/compas_scores.csv")
 ```
 
 Creating a new df from a subset of compas_df, altering names of some columns
@@ -105,8 +107,8 @@ Storing dfnew in Data tables folder
 Last wrote: 2/4/18; filtered s.t. beforeCOMPAS==1
 ```{r}
 #setwd("C:/Users/Caroline Wang/OneDrive/Duke/Criminal Recidivism/Data tables")
-dfnew%>%as_data_frame()%>%
-        write.csv(dfnew,"dfnew.csv")
+# dfnew%>%as_data_frame()%>%
+        # write.csv(dfnew,"dfnew.csv")
 ```
 
 
@@ -298,8 +300,10 @@ I will take "prior sentence to incarceration" to mean prison because jail is sho
 I will take "screening date" as current, and any offenses which occurred up to 30 days before this screening date as current offense (partially because 30 days seems reasonable to me and also to stay consistent with ProPublica's definition of recidivism, which defines a current case as within 30 days of the screening date).
 
 arnold1: age at current arrest, current violent offence, current violent&20 or younger, prior sentence to incarceration 
+*Age is in years, 
 Code status 2/4/18: code seems to work, but I suspect that I may have handled something wrong. 
 1) deal with NAs for prison incarceration (should appear as NA, NOT 0s)
+2) Date subtraction not working as expected
 ```{r}
 #CHECK IF SOMEBODY DOESN'T HAVE ANY OFFENSES WITHIN 30 DAYS
 
@@ -332,18 +336,35 @@ View(head(arnold1))
 
 Debug Arnold1
 ```{r}
+
 testarnold<-df_beforeCOMPAS%>%
-           distinct(person_id,screening_date,
-                    ,dob,statute,prison_in_custody,prison_out_custody)%>%
-           mutate(current_age=screening_date-dob)%>%
-                  # is_violent=switch(substr(statute,1,3),"777"=1,"782"=1,"784"=1,"806"=1,"812"=1,"825"=1,"827"=1,NA=NA, x=0))
-                  # days_from_compas=screening_date-offense_date,
-                  # is_current=if_else(days_from_compas<5,1,0),
-                  in_prison=switch(prison_out_custody-prison_in_custody,1,0),
+           distinct(person_id,screening_date,offense_date,dob,statute,prison_in_custody,prison_out_custody)%>%
+  as_data_frame()%>%
+
+
+# testarnold$screening_date<-as.Date(testarnold$screening_date,format = "%Y-%m-%d %T")
+# testarnold$offense_date<-as.Date(testarnold$offense_date,format = "%Y-%m-%d %T")
+# testarnold$dob<-as.Date(testarnold$dob,format = "%Y-%m-%d %T")
+# testarnold$prison_in_custody<-as.Date(testarnold$prison_in_custody,format = "%Y-%m-%d %T")
+# testarnold$prison_out_custody<-as.Date(testarnold$prison_out_custody,format = "%Y-%m-%d %T")
+
+# testarnold<-testarnold%>%
+           mutate(screening_date=ymd_hms(screening_date),
+                  offense_date=ymd_hms(offense_date),
+                  dob=ymd_hms(dob),
+                  prison_in_custody=ymd_hms(prison_in_custody),
+                  prison_out_custody=ymd_hms(prison_out_custody),
+                  
+                  
+                  current_age=as.period(screening_date-dob,units="years"),
+                  # is_violent=if_else(substr(statute,1,3) %in% c("777","782","784","794","806","812","825","827"),1,0),
+                  # days_from_compas=as.numeric(screening_date-offense_date,units="days"),
+                  # is_current=if_else(days_from_compas<30,1,0),
+                  # prison_time=prison_out_custody-prison_in_custody,
+                  # in_prison=case_when(is.null(prison_in_custody)~NA, prison_out_custody-prison_in_custody>0~1,prison_out_custody-prison_in_custody<0~0),
                   # twenty_or_less=if_else(current_age<=20,1,0)
-                  # 
-                  # )%>%
-           as_data_frame()
+                  )
+           # as_data_frame()
 
 
 
@@ -449,15 +470,15 @@ View(filter(test,fail_appeared==1))
 
 Calculating recidivation from the dfnew entries after the COMPAS score was calculated. 
 ProPublica/Northpointe's def: 
-In???a 2009 study examining the predictive power of its COMPAS score, Northpointe defined recidivism as "a finger-printable arrest involving a charge and a filing for any uniform crime reporting (UCR) code." We interpreted that to mean a criminal offense that resulted in a **jail booking** and took place after the crime for which the person was COMPAS scored.
+In�a 2009 study examining the predictive power of its COMPAS score, Northpointe defined recidivism as "a finger-printable arrest involving a charge and a filing for any uniform crime reporting (UCR) code." We interpreted that to mean a criminal offense that resulted in a **jail booking** and took place after the crime for which the person was COMPAS scored.
 
 It was not always clear, however, which criminal case was associated with an individual's COMPAS score. To match COMPAS scores with accompanying cases, we considered cases with arrest dates or charge dates within 30 days of a COMPAS assessment being conducted. In some instances, we could not find any corresponding charges to COMPAS scores. We removed those cases from our analysis.
 Next, we sought to determine if a person had been charged with a new crime subsequent to crime for which they were COMPAS screened. We *did not count traffic tickets and some municipal ordinance violations as recidivism.* We did not count as recidivists people who were arrested for *failing to appear at their court hearings*, or people who were *later charged with a crime that occurred prior to their COMPAS screening*.
 
-For *violent recidivism*, we used the???FBI's definition of violent crime, a category that includes murder, manslaughter, forcible rape, robbery and aggravated assault.
+For *violent recidivism*, we used the�FBI's definition of violent crime, a category that includes murder, manslaughter, forcible rape, robbery and aggravated assault.
 
 For most of our analysis, we defined recidivism as a *new arrest within two years*. We based this decision on Northpointe's practitioners guide, which says that its recidivism score is meant to predict "a new misdemeanor or felony offense within two years of the COMPAS administration date."
-In addition, a???recent study of 25,000 federal prisoners' recidivism???rates by the U.S. Sentencing Commission, which shows that most recidivists commit a new crime within the first two years after release (if they are going to commit a crime at all).
+In addition, a�recent study of 25,000 federal prisoners' recidivism�rates by the U.S. Sentencing Commission, which shows that most recidivists commit a new crime within the first two years after release (if they are going to commit a crime at all).
 
 2 yr predictions, 3 yr predictions, arrested, whether went to jail, convictions, felony/misdemeanor/traffic, drug, violent, 
 
