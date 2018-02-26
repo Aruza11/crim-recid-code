@@ -254,14 +254,14 @@ dynamic_drug=df_beforeCOMPAS%>%
                         
                         is_drug= if_else(substr(statute,1,3)=="893",1,0),
                         is_drug_5yrs=if_else(years_bw<=5&is_drug==1,1,0)
-                        )
+                        )%>%
   
-                 # distinct(person_id,charge_degree,case_number,charge,is_drug,is_drug_5yrs) %>%
-                 # 
-                 # group_by(person_id) %>%
-                 #    summarize(drug_count_person = sum(is_drug),
-                 #              drug_count_5yrs=sum(is_drug_5yrs)
-                 #              )
+                 distinct(person_id,charge_degree,case_number,charge,is_drug,is_drug_5yrs) %>%
+
+                 group_by(person_id) %>%
+                    summarize(drug_count_person = sum(is_drug),
+                              drug_count_5yrs=sum(is_drug_5yrs)
+                              )
 
 View(head(dynamic_drug,100))
 ```
@@ -439,15 +439,15 @@ View(head(arnold3,10))
 
 Calculating recidivation from the dfnew entries after the COMPAS score was calculated. 
 ProPublica/Northpointe's def: 
-In�a 2009 study examining the predictive power of its COMPAS score, Northpointe defined recidivism as "a finger-printable arrest involving a charge and a filing for any uniform crime reporting (UCR) code." We interpreted that to mean a criminal offense that resulted in a **jail booking** and took place after the crime for which the person was COMPAS scored.
+In a 2009 study examining the predictive power of its COMPAS score, Northpointe defined recidivism as "a finger-printable arrest involving a charge and a filing for any uniform crime reporting (UCR) code." We interpreted that to mean a criminal offense that resulted in a **jail booking** and took place after the crime for which the person was COMPAS scored.
 
 It was not always clear, however, which criminal case was associated with an individual's COMPAS score. To match COMPAS scores with accompanying cases, we considered cases with arrest dates or charge dates within 30 days of a COMPAS assessment being conducted. In some instances, we could not find any corresponding charges to COMPAS scores. We removed those cases from our analysis.
 Next, we sought to determine if a person had been charged with a new crime subsequent to crime for which they were COMPAS screened. We *did not count traffic tickets and some municipal ordinance violations as recidivism.* We did not count as recidivists people who were arrested for *failing to appear at their court hearings*, or people who were *later charged with a crime that occurred prior to their COMPAS screening*.
 
-For *violent recidivism*, we used the�FBI's definition of violent crime, a category that includes murder, manslaughter, forcible rape, robbery and aggravated assault.
+For *violent recidivism*, we used the FBI's definition of violent crime, a category that includes murder, manslaughter, forcible rape, robbery and aggravated assault.
 
 For most of our analysis, we defined recidivism as a *new arrest within two years*. We based this decision on Northpointe's practitioners guide, which says that its recidivism score is meant to predict "a new misdemeanor or felony offense within two years of the COMPAS administration date."
-In addition, a�recent study of 25,000 federal prisoners' recidivism�rates by the U.S. Sentencing Commission, which shows that most recidivists commit a new crime within the first two years after release (if they are going to commit a crime at all).
+In addition, a recent study of 25,000 federal prisoners' recidivism rates by the U.S. Sentencing Commission, which shows that most recidivists commit a new crime within the first two years after release (if they are going to commit a crime at all).
 
 2 yr predictions, 3 yr predictions, arrested, whether went to jail, convictions, felony/misdemeanor/traffic, drug, violent, 
 
@@ -464,35 +464,38 @@ Corrections to make: for the in-jail criteria, must correct it to accountf or NA
 recid<-df_afterCOMPAS%>%
             distinct(person_id,case_number,charge_number,charge_degree,charge,statute,jail_in_custody,jail_out_custody,screening_date,offense_date)%>%
             filter(!is.na(jail_in_custody))%>%
-            as_data_frame()
+            as_data_frame()%>%
   
-recid$screening_date<-as.Date(recid$screening_date,format = "%Y-%m-%d %T")
-recid$jail_in_custody<-as.Date(recid$jail_in_custody,format = "%Y-%m-%d %T")
-recid$jail_out_custody<-as.Date(recid$jail_out_custody,format = "%Y-%m-%d %T")
-recid$offense_date<-as.Date(recid$offense_date,format = "%Y-%m-%d %T")
-#converted to date class explicitly, date subtraction counts years
-recid<-recid%>%
-            mutate(is_felony = if_else(substr(charge_degree,2,2)=="F",1,0),
+            mutate(screening_date=ymd_hms(screening_date),
+                   jail_in_custody=ymd_hms(jail_in_custody),
+                   jail_out_custody=ymd_hms(jail_out_custody),
+                   offense_date=ymd_hms(offense_date),
+                   
+                   is_felony = if_else(substr(charge_degree,2,2)=="F",1,0),
                    is_misdem= if_else(substr(charge_degree,2,2)=="M",1,0),
                    is_violent=if_else(substr(statute,1,3) %in% c("777","782","784","794","806","812","825","827"),1,0),
-                   jailtime_in_days=jail_out_custody-jail_in_custody,
-                   recid_jail=if_else((jail_in_custody-screening_date>30)&!is.na(jail_in_custody)&!is.na(screening_date),1,0),
-                   within_two_years=if_else(offense_date-screening_date<720,1,0),
                    is_traffic = if_else(charge_degree=="(TCX)",1,0),
                    is_municipal= if_else((!substr(statute,1,1)%in%c(0:9))&!is.na(statute),1,0),
+                   # jailtime_in_days=as.numeric(jail_out_custody-jail_in_custody,units="days"),
                    
-                   propub_recid=if_else((recid_jail==1&within_two_years==1&is_traffic==0&is_municipal==0),1,0),
+                   days_bw_jailin_scrndate=as.numeric(jail_in_custody-screening_date,units="days"),
+                   recid_jail=if_else((days_bw_jailin_scrndate>30)&!is.na(jail_in_custody)&!is.na(screening_date),1,0),
+                   
+                   days_bw=as.numeric(offense_date-screening_date,units="days"),
+                   within_two_years=if_else(days_bw<720,1,0),
+                   
+                   propub_recid=if_else((recid_jail==1&within_two_years==1
+                                         &is_traffic==0&is_municipal==0),1,0),
                    propub_violent_recid=if_else(propub_recid==1&is_violent==1,1,0)
                    )%>%
 
             group_by(person_id)%>%
                 summarise(propub_recid=if_else(sum(propub_recid)>0,1,0),
-                          propub_violent_recid=if_else(sum(propub_violent_recid)>0,1,0)
-
+                          propub_violent_recid=if_else(sum(propub_violent_recid)>0,1,0),
+                          traffic_recid=if_else(sum(is_traffic)>0,1,0)
                         )
 
-
-            
+View(head(recid,100))
 ```
 
 
@@ -506,14 +509,14 @@ features<-features%>%
             left_join(dynamic_misdem,by=NULL)%>%
             left_join(arnold1,by=NULL)%>%
             # left_join(arnold2,by=person_id)%>% #add this later, this has problems
-            left_join(arnold3,by=NULL)
+            left_join(arnold3,by=NULL)%>%
+            left_join(recid, by=NULL)
 
 ```
 
 Write features table to working directory because I want intermediate versions of this table synced on Github  
 ```{r}
 write.csv(features,"features.csv")
- 
 ```
 
 
