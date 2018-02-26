@@ -165,5 +165,80 @@ ggplot(features, aes(x=age, y=fail_to_appear_raw)) +
 
 
 ```
+Categorising based on number of felonies/misdemeanors?
+Working with Risk of Violence scores
+```{r}
+# felonies_0_5<-filter(features,felony_count_person<5)
+# felonies_5_10<-filter(features, felony_count_person>=5&felony_count_person<10)
 
+ggplot(features, aes(x=felony_count_person, y=violence_raw)) +
+     geom_point(shape=1)  +
+     ggtitle("Risk of Violence Raw vs Number Felonies")
+
+ggplot(features, aes(x=felony_count_person, y=violence_decile)) +
+     geom_point(shape=1)  +
+     ggtitle("Risk of Violence Score vs Number Felonies")
+
+ggplot(features, aes(x=misdem_count_person, y=violence_raw)) +
+     geom_point(shape=1)  +
+     ggtitle("Risk of Violence Raw vs Number Misdemeanors")
+
+ggplot(features, aes(x=misdem_count_person, y=violence_decile)) +
+     geom_point(shape=1)  +
+     ggtitle("Risk of Violence Score vs Number Misdemeanors")
+
+
+#Same as above but with within 5 years felonies/midemeanors 
+ggplot(features, aes(x=yrs5_felcount_person, y=violence_raw)) +
+     geom_point(shape=1)  +
+     ggtitle("Risk of Violence Raw vs Number Felonies")
+
+ggplot(features, aes(x=yrs5_felcount_person, y=violence_decile)) +
+     geom_point(shape=1)  +
+     ggtitle("Risk of Violence Score vs Number Felonies")
+
+ggplot(features, aes(x=misdem_count_5yrs, y=violence_raw)) +
+     geom_point(shape=1)  +
+     ggtitle("Risk of Violence Raw vs Number Misdemeanors")
+
+ggplot(features, aes(x=misdem_count_5yrs, y=violence_decile)) +
+     geom_point(shape=1)  +
+     ggtitle("Risk of Violence Score vs Number Misdemeanors")
+
+```
+Exploring more relations
+# A tibble: 7 x 1		# A tibble: 2 x 1		# A tibble: 6 x 1
+     marital_status		     sex		              race
+              <chr>		   <chr>		             <chr>
+1            Single		1   Male		      1 Native American
+2           Married		2 Female		      2 Caucasian
+3         Separated				              3 African-American
+4           Divorced				            4 Hispanic
+5 Significant Other				              5 Asian
+6           Widowed				              6 Other
+7          Unknown				
+
+```{r}
+#Risk of violence and current violent offense 
+ggplot(features, aes(x=current_violent_offense, y=violence_raw)) +
+     geom_point(shape=1)  +
+     ggtitle("Risk of Violence Raw vs Current Violent Offense")
+
+#Risk of violence vs race
+ggplot(features, aes(x=race, y=violence_raw)) +
+     geom_point(shape=1)  +
+     ggtitle("Risk of Violence Raw vs Race")
+
+
+#Risk of violence vs sex
+ggplot(features, aes(x=sex, y=violence_raw)) +
+     geom_point(shape=1)  +
+     ggtitle("Risk of Violence Raw vs Sex")
+
+#Risk of violence vs marital status
+ggplot(features, aes(x=marital_status, y=violence_raw)) +
+     geom_point(shape=1)  +
+     ggtitle("Risk of Violence Raw vs Marital Status")
+
+```
 
