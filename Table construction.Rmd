@@ -56,7 +56,6 @@ Starting with compas_df b/c I don't want people I don't have compas scores for
 ```{r}
 dfnew=select(compas_df,id,person_id, first, last, marital_status, screening_date,scale_id, type_of_assessment, raw_score, decile_score)
 dfnew=rename(dfnew, person_score_id=id)
-#View(dfnew)
 
 #Joining dfnew to relevant columns in people_df
 peoplenew=select(people_df,id, name,sex, race, dob, age, c_case_number)
@@ -67,8 +66,6 @@ dfnew=left_join(dfnew, peoplenew, by="person_id")
 #casearrestnew=select(casearrest_df,person_id, case_number, arrest_id, arrest_date, #charge_degree)
 #dfnew=left_join(dfnew, casearrestnew, by="person_id")
 
-# Performed check on jailhistorynew(sorting jailhistory_df by last name to see 
-# if I noticed any anomalies)
 # Joined dfnew to relevant columns in jailhistory_df
 jailhistorynew=select(jailhistory_df,person_id, in_custody, out_custody)
 jailhistorynew=rename(jailhistorynew,jail_in_custody=in_custody, jail_out_custody=out_custody)
@@ -91,17 +88,13 @@ df_afterCOMPAS=dfnew%>%
                left_join(.,prisonhistorynew, by="person_id")%>%
                mutate(beforeCOMPAS=if_else(offense_date<=screening_date,1,0))%>%
                filter(beforeCOMPAS==0)
-
-
-
 ```
 
-NOTES: 1) DFNEW ONLY CONTAINS INFORMATION FROM BEFORE THE COMPAS EVALUATION (so we can perform predictive analysis on the code). 
+NOTES: 1) df_beforeCOMPAS ONLY CONTAINS INFORMATION FROM BEFORE THE COMPAS EVALUATION (so we can perform predictive analysis on the code). 
 2) All date columns should be coerced to Date class, i.e. 
 dfnew$screening_date<-as.Date(dfnew$screening_date,format = "%Y-%m-%d %T") if converted to dataframe
 3) Some people are not in charge_df, so they get filtered out of dfnew in the final filter(beforeCOMPAS==1) (because they have NAs for the offense date, beforeCOMPAS==1). Perhaps I should try to get this information from the broward dataset? 
 4)count(dfnew):2279601
-
 
 Storing dfnew in Data tables folder
 Last wrote: 2/4/18; filtered s.t. beforeCOMPAS==1
@@ -112,11 +105,9 @@ Last wrote: 2/4/18; filtered s.t. beforeCOMPAS==1
 ```
 
 
-**features table code being; generated from dfnew**
-
+**features table code being generated from dfnew**
 Checking for all unique values for each relevant column. Also trying to figure out what the violent statutes are. 
 ```{r}
-#marital status: single and married 
 mar=as_data_frame(distinct(select(df_beforeCOMPAS, marital_status)))
 sex=as_data_frame(distinct(select(df_beforeCOMPAS, sex)))
 race=as_data_frame(distinct(select(df_beforeCOMPAS, race)))
@@ -127,8 +118,6 @@ statute=df_beforeCOMPAS%>%
           mutate(truncated=substr(statute,1,3),
           is_violent=if_else(substr(statute,1,3) %in% c("777","782","784","806","812","825","827"),1,0)
 )%>%
-      #    select(truncated)%>%
-       #   distinct()%>%
           as_data_frame()
         
 #sort(distinct(statute$truncated))
@@ -141,8 +130,6 @@ filter(df_beforeCOMPAS,statute=="ODRD631")
 df_beforeCOMPAS%>%filter(statute=="OHDD58")%>%
         select(first,last,case_number)%>%
         View()
-
-  
 ```
 
 
@@ -150,8 +137,6 @@ categorical variables assigned numbers 1 and up as detailed in features table ex
 static features--variables unique to each person, and which  I must assign numbers
 ```{r}
 #use levels(dataset$column) to check what the vectors are
-#should write a function for this later
-#should go through person by person using a while true loop 
 features=as_data_frame(distinct(df_beforeCOMPAS, person_id, first,last,age,sex,marital_status,race))
 
 features$sex=factor(features$sex, levels=c("Male", "Female"), labels=c(1,2))
@@ -162,18 +147,19 @@ features$marital_status=as.numeric(as.character(features$marital_status))
 
 features$race=factor(features$race, levels=c("Caucasian", "African-American","Hispanic","Asian","Native American","Other"), labels=c(1,2,3,4,5,6))
 features$race=as.numeric(as.character(features$race))
-
 ```
 
 dynamic features-variables which will have a numeric value, and describe the charges/cases/crimes
 *Possible issue (looked at person id 75): some people have what looks like duplicate charges but different case numbers. Are these actually different cases or is this a case where the same case got given 2 different case numbers? 
+
 **Q: is checking #prison_in_custody enough to determine prison visits?
 **Q: prison_time/jail_time: what if they were in jail 2x the exact same amount of time?
 
-**Note to self: (11714-11109)/11109 people were screened 2x
+*Note*: (11714-11109)/11109 people were screened 2x
 **distinct(person_id,charge_degree,case_number,charge) is how I have decided to distinguish unique "events" for each person. Check this criterion. 
-**Note to self: must call as_data_frame() before group_by function, or else I get a parser stack overflow error. Perhaps because it's trying to invoke the function on each element in the group_by? 
-**Note to self: do not use filter(is_felony==1) to remove entries because I want 0s for when the felony count is  0, not NAs (when I left join it later)
+*Note*: must call as_data_frame() before group_by function, or else I get a parser stack overflow error. Perhaps because it's trying to invoke the function on each element in the group_by? 
+*Note*: do not use filter(is_felony==1) to remove entries because I want to distinguish between 0s and NAs (when I left join it later)
+*Note*: applied abs() function to the difference of dates b/c the HMS portion of the dates is not in military time, so weird stuff with the hours can happen
 #conduct check later on prison times data table (the original): does any 1 person have 2 stays in prison/jail that  are exactly the same length?
 
 *Interesting fact: when the data is in a sqlite tbl, data is automatically typed, so subtracting dates works. However, if you convert to a dataframe, the data is given a type, so subtracting dates doesn't work unless you manually convert it Date class. *
@@ -184,52 +170,68 @@ dynamic_fel:
 
 dynamic_incarceration:
 .	number of prison visits
-.	total prison time
+.	total prison time (in days)
 .	number of jail visits
-.	total jail time
+.	total jail time (in days)
 .	number of cases 
 
 ```{r}
-
 dynamic_fel=df_beforeCOMPAS%>%
            distinct(person_id,charge_degree,case_number,charge,screening_date,date_charge_filed) %>%
-
-           mutate(is_felony = if_else(substr(charge_degree,2,2)=="F",1,0)) %>%
-           # filter(is_felony==1)%>%
-           mutate(less_5yr = if_else(screening_date-date_charge_filed<=5,1,0))%>%
-  
-           distinct(person_id,charge_degree,case_number,charge,is_felony,less_5yr) %>%
-  #evreything can be viewed up to this point, after this I get a "parser stack overflow" error
            as_data_frame()%>%
+
+           mutate(screening_date=ymd_hms(screening_date),
+                  date_charge_filed=ymd_hms(date_charge_filed),
+                  is_felony = if_else(substr(charge_degree,2,2)=="F",1,0),
+                  years_bw = (as.numeric(screening_date-date_charge_filed,units="days")/365.25), 
+                  fel_less_5yr = if_else(years_bw<=5&is_felony==1,1,0)
+           )%>%
+  #128639 rows
+           distinct(person_id,charge_degree,case_number,charge,is_felony,fel_less_5yr)%>%
+  #120141 rows--why? 
            group_by(person_id) %>%
              summarize(felony_count_person=sum(is_felony),
-                       yrs5_felcount_person = sum(less_5yr))
+                       yrs5_felcount_person = sum(fel_less_5yr))
 
+# View(head(dynamic_fel, 100))
  
 dynamic_incarceration=df_beforeCOMPAS %>%
                         distinct(person_id,prison_in_custody,prison_out_custody,jail_in_custody,jail_out_custody,case_number)%>%
-                        mutate(prison_time=prison_out_custody-prison_in_custody,
-                               jail_time=jail_out_custody-jail_in_custody)%>%
                         as_data_frame()%>%
+                        mutate(prison_in_custody=ymd_hms(prison_in_custody),
+                               prison_out_custody=ymd_hms(prison_out_custody),
+                               
+                               jail_in_custody=ymd_hms(jail_in_custody),
+                               jail_out_custody=ymd_hms(jail_out_custody),
+
+                               prison_time=abs(as.numeric
+                                               (prison_out_custody-prison_in_custody,units="days")),
+                               jail_time=abs(as.numeric
+                                             (jail_out_custody-jail_in_custody,units="days"))
+                               )%>%
 
                         group_by(person_id) %>%
                            summarize(prison_visits=n_distinct(prison_in_custody),
-                                     prison_time=n_distinct(prison_time),
-  
+                                     prison_time=sum(unique(prison_time)),
+
                                      jail_visits=n_distinct(jail_in_custody),
-                                     jail_time=n_distinct(jail_time),
+                                     jail_time=sum(unique(jail_time)),
                                      numcases=n_distinct(case_number)
                                      )
 
+View(head(dynamic_incarceration, 100))
+
+#person id 55, negative jail time??
+test_case_incarc=as_data_frame(filter(df_beforeCOMPAS, person_id==55))
 
 
-# testperson=filter(dfnew,person_id==75)
-# numfel=distinct(testperson,person_id,offense_date,charge_degree,prison_in_custody,prison_out_custody,jail_in_custody,jail_out_custody,case_number,charge)%>%
-#               mutate(is_felony = if_else(substr(charge_degree,2,2)=="F",1,0)) %>%
-#               distinct(is_felony,case_number,charge_degree,charge)
-                 # summarize(felony_count_person = distinct(is_felony,case_number,charge_degree),is_felony))
+person_with_most=filter(dynamic_fel,felony_count_person==max(dynamic_fel$felony_count_person))
+#52 felonies
+testperson=as_data_frame(filter(df_beforeCOMPAS, person_id==9761))
+unique(testperson$case_number) 
+#involved in 40 distinct cases
 
-#summarise(dynamic_fel_incarceration, Average = mean(numcases, na.rm = T))
+
 
 ```
 
@@ -244,19 +246,26 @@ dynamic_drug:
 ```{r}
 dynamic_drug=df_beforeCOMPAS%>%
                  distinct(person_id,charge_degree,case_number,charge,screening_date,date_charge_filed,statute)%>%
-
-                 mutate(is_drug= if_else(substr(statute,1,3)=="893",1,0)) %>%
-                 mutate(is_drug_5yrs=if_else(screening_date-date_charge_filed<=5,1,0))%>%
-                 distinct(person_id,charge_dis_drug_5yrsegree,case_number,charge,is_drug,is_drug_5yrs) %>%
                  as_data_frame()%>%
 
-                 group_by(person_id) %>%
-                    summarize(drug_count_person = sum(is_drug),
-                              drug_count_5yrs=sum(is_drug_5yrs)
-                              )
-# dynamic_drug
+                 mutate(screening_date=ymd_hms(screening_date),
+                        date_charge_filed=ymd_hms(date_charge_filed),
+                        years_bw = (as.numeric(screening_date-date_charge_filed,units="days")/365.25), 
+                        
+                        is_drug= if_else(substr(statute,1,3)=="893",1,0),
+                        is_drug_5yrs=if_else(years_bw<=5&is_drug==1,1,0)
+                        )
+  
+                 # distinct(person_id,charge_degree,case_number,charge,is_drug,is_drug_5yrs) %>%
+                 # 
+                 # group_by(person_id) %>%
+                 #    summarize(drug_count_person = sum(is_drug),
+                 #              drug_count_5yrs=sum(is_drug_5yrs)
+                 #              )
 
+View(head(dynamic_drug,100))
 ```
+
 
 dynamic_misdem: 
 .	# misdemeanors per person
@@ -264,17 +273,21 @@ dynamic_misdem:
 ```{r}
 dynamic_misdem=df_beforeCOMPAS%>%
                 distinct(person_id,charge_degree,case_number,charge,screening_date,date_charge_filed)%>%
-                mutate(is_misdem= if_else(substr(charge_degree,2,2)=="M",1,0)) %>%
-                mutate(is_misdem_5yrs=if_else(screening_date-date_charge_filed<=5,1,0))%>%
+                as_data_frame()%>%
+
+                mutate(screening_date=ymd_hms(screening_date),
+                       date_charge_filed=ymd_hms(date_charge_filed),
+                       years_bw = (as.numeric(screening_date-date_charge_filed,units="days")/365.25), 
+                       is_misdem= if_else(substr(charge_degree,2,2)=="M",1,0),
+                       is_misdem_5yrs=if_else(years_bw<=5&is_misdem,1,0))%>%
   
                 distinct(person_id,charge_degree,case_number,charge,is_misdem,is_misdem_5yrs) %>%
-                as_data_frame()%>%
 
                 group_by(person_id) %>%
                    summarize(misdem_count_person = sum(is_misdem),
                              misdem_count_5yrs=sum(is_misdem_5yrs)
                              )
-# dynamic_misdem
+View(head(dynamic_misdem,100))
 
 ```
 
@@ -354,6 +367,7 @@ Code status (2/4/18): this chunk works, but because my convictions parsing is fl
 convictions_subset<-convictions%>%
                       select(case_number,Charge,convicted)%>%  
                       rename(charge_number=Charge)  
+
 arnold2<-df_beforeCOMPAS%>%
             distinct(person_id,case_number,charge_number,charge_degree,charge,statute)%>%
   #must be data frame because have to left_join same 2 data structure
@@ -419,17 +433,6 @@ arnold3<-df_beforeCOMPAS%>%
                     )
 
 View(head(arnold3,10))
-
-```
-
-Dev code
-```{r}
-test=arnold3%>%
-      filter(fail_appeared==1)%>%
-      mutate(days_bw=screening_date-EventDate,logical=bw<=730,fail_appear_two_yr=if_else(logical,1,0))
-
-#View(filter(test,bw==1))
-View(filter(test,fail_appeared==1))  
 
 ```
 
