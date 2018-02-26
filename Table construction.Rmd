@@ -40,6 +40,8 @@ people_df<-tbl(db,"people")
 ```{r}
 fail_to_appear<-read.csv("C:/Users/Caroline Wang/OneDrive/Duke/Criminal Recidivism/Data tables/fail_to_appear.csv")
 convictions<-read.csv("C:/Users/Caroline Wang/OneDrive/Duke/Criminal Recidivism/Data tables/convicted_from_disps.csv")
+compas_scores<-read.csv("C:/Users/Caroline Wang/OneDrive/Duke/Criminal Recidivism/Data tables/compas_scores.csv")
+
 ```
 
 Writin individuals' compas score to file. I am doing this separately because I want the features table to be 1 row per person, which it cannot be if I add the compas scores (b/c each person has 3 scores for compas). *Note: some people have more than 1 set of COMPAS scores.*
@@ -147,6 +149,32 @@ features$marital_status=as.numeric(as.character(features$marital_status))
 
 features$race=factor(features$race, levels=c("Caucasian", "African-American","Hispanic","Asian","Native American","Other"), labels=c(1,2,3,4,5,6))
 features$race=as.numeric(as.character(features$race))
+
+propub_violence_scores<-compas_scores%>%
+                        select(person_id, type_of_assessment,raw_score,decile_score)%>%
+                        filter(type_of_assessment=="Risk of Violence")
+
+propub_recidivism_scores<-compas_scores%>%
+                        select(person_id, type_of_assessment,raw_score,decile_score)%>%
+                        filter(type_of_assessment=="Risk of Recidivism")
+
+propub_failure_scores<-compas_scores%>%
+                       select(person_id, type_of_assessment,raw_score,decile_score)%>%
+                       filter(type_of_assessment=="Risk of Failure to Appear")
+
+features<-features%>%
+          left_join(propub_violence_scores,by="person_id")%>%
+          rename(violence_score=type_of_assessment,
+                 violence_raw=raw_score,violence_decile=decile_score)%>%
+  
+          left_join(propub_recidivism_scores,by="person_id")%>%
+          rename(recid_score=type_of_assessment,
+                 recid_raw=raw_score,recid_decile=decile_score)%>%
+
+          left_join(propub_failure_scores,by="person_id")%>%
+          rename(fail_to_appear_score=type_of_assessment,
+                 fail_to_appear_raw=raw_score,fail_to_appear_decile=decile_score)
+
 ```
 
 dynamic features-variables which will have a numeric value, and describe the charges/cases/crimes

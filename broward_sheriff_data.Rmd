@@ -36,7 +36,7 @@ scattertbl1<-filter(pretrialscreen,DisplayText=="Risk of Violence")
 scattertbl2<-filter(pretrialscreen,DisplayText=="Risk of Recidivism")
 scattertbl3<-filter(pretrialscreen,DisplayText=="Risk of Failure to Appear")
 
-featurestbl<-read.csv("features.csv")
+features<-read.csv("features.csv")
 
 ```
 
@@ -137,9 +137,32 @@ Similar: similar number of  priors, similar number of offenses,
 Issue: we only have the criminal history information for people in ProPublica's dataset, and ProPublica only looked at pretrial people. Therefore we can only look at the Compas algorithm for pretrial screening (and in fact, we will be looking at the features table I generated in an earlier bit of code)
 
 ```{r}
-ggplot(featurestbl, aes(x=age, y=compas_score)) +
+ggplot(features, aes(x=age, y=violence_decile)) +
      geom_point(shape=1)  +
-     ggtitle("Compas Score vs Age")
+     ggtitle("Risk of Violence Score vs Age")
+
+ggplot(features, aes(x=age, y=violence_raw)) +
+     geom_point(shape=1)  +
+     ggtitle("Risk of Violence Raw vs Age")
+
+
+ggplot(features, aes(x=age, y=recid_decile)) +
+     geom_point(shape=1)  +
+     ggtitle("Risk of Recidivism Score vs Age")
+
+ggplot(features, aes(x=age, y=recid_raw)) +
+     geom_point(shape=1)  +
+     ggtitle("Risk of Recidivism Raw vs Age")
+
+
+ggplot(features, aes(x=age, y=fail_to_appear_decile)) +
+     geom_point(shape=1)  +
+     ggtitle("Risk of Failure to Appear Score vs Age")
+
+ggplot(features, aes(x=age, y=fail_to_appear_raw)) +
+     geom_point(shape=1)  +
+     ggtitle("Risk of Failure to Appear Raw vs Age")
+
 
 ```
 
