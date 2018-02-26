@@ -219,17 +219,16 @@ dynamic_incarceration=df_beforeCOMPAS %>%
                                      numcases=n_distinct(case_number)
                                      )
 
-View(head(dynamic_incarceration, 100))
-
-#person id 55, negative jail time??
-test_case_incarc=as_data_frame(filter(df_beforeCOMPAS, person_id==55))
-
-
-person_with_most=filter(dynamic_fel,felony_count_person==max(dynamic_fel$felony_count_person))
-#52 felonies
-testperson=as_data_frame(filter(df_beforeCOMPAS, person_id==9761))
-unique(testperson$case_number) 
-#involved in 40 distinct cases
+# View(head(dynamic_incarceration, 100))
+# 
+# test_case_incarc=as_data_frame(filter(df_beforeCOMPAS, person_id==55))
+# 
+# 
+# person_with_most=filter(dynamic_fel,felony_count_person==max(dynamic_fel$felony_count_person))
+# #52 felonies
+# testperson=as_data_frame(filter(df_beforeCOMPAS, person_id==9761))
+# unique(testperson$case_number) 
+# #involved in 40 distinct cases
 
 
 
@@ -263,7 +262,7 @@ dynamic_drug=df_beforeCOMPAS%>%
                               drug_count_5yrs=sum(is_drug_5yrs)
                               )
 
-View(head(dynamic_drug,100))
+# View(head(dynamic_drug,100))
 ```
 
 
@@ -287,7 +286,7 @@ dynamic_misdem=df_beforeCOMPAS%>%
                    summarize(misdem_count_person = sum(is_misdem),
                              misdem_count_5yrs=sum(is_misdem_5yrs)
                              )
-View(head(dynamic_misdem,100))
+# View(head(dynamic_misdem,100))
 
 ```
 
@@ -348,7 +347,7 @@ arnold1<-df_beforeCOMPAS%>%
                         prior_incarceration=if_else(sum(in_prison)>0,1,0)
                         )
 
-View(head(arnold1,20))
+# View(head(arnold1,20))
 
 ```
 
@@ -370,10 +369,10 @@ convictions_subset<-convictions%>%
 
 arnold2<-df_beforeCOMPAS%>%
             distinct(person_id,case_number,charge_number,charge_degree,charge,statute)%>%
-  #must be data frame because have to left_join same 2 data structure
             as_data_frame()%>%
-            left_join(convictions_subset, by=c("case_number","charge_number"))%>%
-
+            right_join(convictions_subset, by=c("case_number","charge_number"))%>%
+            #right_join b/c I want to be sure that I have all rows of convictions subset
+            #insufficient to left_join by case_number and charge_number because some cases and charges have more than one disposition
             mutate(is_felony = if_else(substr(charge_degree,2,2)=="F",1,0),
                    is_misdem= if_else(substr(charge_degree,2,2)=="M",1,0),
                    is_violent=if_else(substr(statute,1,3) %in% c("777","782","784","794","806","812","825","827"),1,0),
@@ -391,7 +390,7 @@ arnold2<-df_beforeCOMPAS%>%
 
 
 
-View(head(arnold2))
+View(head(arnold2,100))
                       
 ```
 
@@ -403,7 +402,6 @@ PSA Features: Failure to appear
 Possible issue:  Why are some person_ids missing?
 Note: must convert to dataframe type right away because left_join only works on tbls from the same source. Since I'm joining by case_number, must also make sure case_num columns are the same type. 
 
-*days_bw calculated in days
 ```{r}
 distinct_fail_to_appear<-fail_to_appear%>%
                         distinct(EventDate,case_num,fail_appeared)%>%
@@ -432,7 +430,7 @@ arnold3<-df_beforeCOMPAS%>%
                     fail_appear_two_plus=if_else(sum(fail_appear_two_plus)>0,1,0)
                     )
 
-View(head(arnold3,10))
+# View(head(arnold3,10))
 
 ```
 
@@ -495,7 +493,7 @@ recid<-df_afterCOMPAS%>%
                           traffic_recid=if_else(sum(is_traffic)>0,1,0)
                         )
 
-View(head(recid,100))
+# View(head(recid,100))
 ```
 
 
@@ -508,9 +506,10 @@ features<-features%>%
             left_join(dynamic_misdem,by=NULL)%>%
             left_join(dynamic_misdem,by=NULL)%>%
             left_join(arnold1,by=NULL)%>%
-            # left_join(arnold2,by=person_id)%>% #add this later, this has problems
+            left_join(arnold2,by=NULL)%>% 
             left_join(arnold3,by=NULL)%>%
-            left_join(recid, by=NULL)
+            left_join(recid, by=NULL) 
+#rows in x with no entries in y have NA values in the new columns
 
 ```
 
