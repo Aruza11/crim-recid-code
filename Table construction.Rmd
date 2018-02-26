@@ -300,73 +300,42 @@ I will take "prior sentence to incarceration" to mean prison because jail is sho
 I will take "screening date" as current, and any offenses which occurred up to 30 days before this screening date as current offense (partially because 30 days seems reasonable to me and also to stay consistent with ProPublica's definition of recidivism, which defines a current case as within 30 days of the screening date).
 
 arnold1: age at current arrest, current violent offence, current violent&20 or younger, prior sentence to incarceration 
-*Age is in years, 
-Code status 2/4/18: code seems to work, but I suspect that I may have handled something wrong. 
-1) deal with NAs for prison incarceration (should appear as NA, NOT 0s)
-2) Date subtraction not working as expected
-```{r}
-#CHECK IF SOMEBODY DOESN'T HAVE ANY OFFENSES WITHIN 30 DAYS
-
-arnold1=df_beforeCOMPAS%>%
-           distinct(person_id,offense_date,screening_date,
-                    charge_degree,dob,statute,prison_in_custody,prison_out_custody)%>%
-           mutate(current_age=(screening_date-dob),
-                  is_violent=if_else(substr(statute,1,3) %in% c("777","782","784","794","806","812","825","827"),1,0),
-                  days_from_compas=screening_date-offense_date,
-                  is_current=if_else(days_from_compas<30,1,0),
-                  in_prison=if_else(prison_out_custody-prison_in_custody>0,1,0),
-                  twenty_or_less=if_else(current_age<=20,1,0)
-                  )%>%
-# 
-           mutate(current_violent_offense=if_else(is_violent==1,1,0),
-                  current_violent_twenty=if_else(is_violent==1&twenty_or_less==1,1,0)
-                  )%>%
-           as_data_frame()%>%
-
-           group_by(person_id) %>%
-              summarize(current_age=max(current_age),
-                        current_violent_offense=if_else(sum(current_violent_offense)>0,1,0),
-                        current_violent_twenty=if_else(sum(current_violent_twenty)>0,1,0),
-                        prior_incarceration=if_else(sum(in_prison)>0,1,0)
-                        )
-View(head(arnold1))
-
-
-```
-
-Debug Arnold1
+*Age is in years, everything else is calculated in days
 ```{r}
 
-testarnold<-df_beforeCOMPAS%>%
-           distinct(person_id,screening_date,offense_date,dob,statute,prison_in_custody,prison_out_custody)%>%
-  as_data_frame()%>%
-
-
-# testarnold$screening_date<-as.Date(testarnold$screening_date,format = "%Y-%m-%d %T")
-# testarnold$offense_date<-as.Date(testarnold$offense_date,format = "%Y-%m-%d %T")
-# testarnold$dob<-as.Date(testarnold$dob,format = "%Y-%m-%d %T")
-# testarnold$prison_in_custody<-as.Date(testarnold$prison_in_custody,format = "%Y-%m-%d %T")
-# testarnold$prison_out_custody<-as.Date(testarnold$prison_out_custody,format = "%Y-%m-%d %T")
-
-# testarnold<-testarnold%>%
-           mutate(screening_date=ymd_hms(screening_date),
+arnold1<-df_beforeCOMPAS%>%
+            distinct(person_id,screening_date,offense_date,dob,statute,prison_in_custody,prison_out_custody)%>%
+            as_data_frame()%>%
+            mutate(screening_date=ymd_hms(screening_date), 
+                  #converting everything to lubridate date class
                   offense_date=ymd_hms(offense_date),
                   dob=ymd_hms(dob),
                   prison_in_custody=ymd_hms(prison_in_custody),
                   prison_out_custody=ymd_hms(prison_out_custody),
                   
+                  current_age=(screening_date-dob)/365.25,
+                  twenty_or_less=if_else(current_age<=20,1,0),
+                  is_violent=if_else(substr(statute,1,3) %in% c("777","782","784","794","806","812","825","827"),1,0),
+                  current_violent_offense=if_else(is_violent==1,1,0),
+                  current_violent_twenty=if_else(is_violent==1&twenty_or_less==1,1,0),
                   
-                  current_age=as.period(screening_date-dob,units="years"),
-                  # is_violent=if_else(substr(statute,1,3) %in% c("777","782","784","794","806","812","825","827"),1,0),
-                  # days_from_compas=as.numeric(screening_date-offense_date,units="days"),
-                  # is_current=if_else(days_from_compas<30,1,0),
-                  # prison_time=prison_out_custody-prison_in_custody,
-                  # in_prison=case_when(is.null(prison_in_custody)~NA, prison_out_custody-prison_in_custody>0~1,prison_out_custody-prison_in_custody<0~0),
-                  # twenty_or_less=if_else(current_age<=20,1,0)
-                  )
-           # as_data_frame()
+                  days_from_compas=as.numeric(screening_date-offense_date,units="days"),
+                  is_current=if_else(days_from_compas<30,1,0),
+                  
+                  prison_time=as.period(prison_out_custody-prison_in_custody,units="days"),
+                  in_prison=case_when(is.null(prison_in_custody) ~ NA,
+                                      prison_out_custody-prison_in_custody>0 ~ TRUE,
+                                      prison_out_custody-prison_in_custody<0 ~ FALSE)
+                  )%>%
 
+            group_by(person_id) %>%
+              summarize(current_age=max(current_age),
+                        current_violent_offense=if_else(sum(current_violent_offense)>0,1,0),
+                        current_violent_twenty=if_else(sum(current_violent_twenty)>0,1,0),
+                        prior_incarceration=if_else(sum(in_prison)>0,1,0)
+                        )
 
+View(head(arnold1,20))
 
 ```
 
@@ -417,50 +386,47 @@ PSA Features: Failure to appear
 .	Prior failure to appear pretrial in the past two years 
 .	Prior failure to appear pretrial older than two years 
 
-Possible issue:  person_id.x!=person_id.y. Check why. Also, why are some person_ids missing?
-Note: must convert to dataframe type right away because left_join only works on tbls from the same source. That's also why I have to coerce date columns from character to Date class. 
+Possible issue:  Why are some person_ids missing?
+Note: must convert to dataframe type right away because left_join only works on tbls from the same source. Since I'm joining by case_number, must also make sure case_num columns are the same type. 
+
+*days_bw calculated in days
 ```{r}
-#check using event date from other dataset?
 distinct_fail_to_appear<-fail_to_appear%>%
                         distinct(EventDate,case_num,fail_appeared)%>%
                         rename(case_number=case_num)
-#Failure to appear pretrial in past 2 years
+distinct_fail_to_appear$case_number=as.character(distinct_fail_to_appear$case_number)
+
 
 arnold3<-df_beforeCOMPAS%>%
         distinct(person_id,case_number,screening_date)%>%
         as_data_frame()%>%
-        left_join(distinct_fail_to_appear,by="case_number")
+        left_join(distinct_fail_to_appear,by="case_number")%>%
 
-arnold3$EventDate<-as.Date(arnold3$EventDate,format = "%m/%d/%Y")
-arnold3$screening_date<-as.Date(arnold3$screening_date,format = "%Y-%m-%d %T")
-
-#calculates DAYS between 
-#CHECK CODe ABOVE
-arnold3=arnold3%>%
-        filter(EventDate<screening_date)%>% #note that NAs are dropped (correct?)
-        mutate(bw=screening_date-EventDate,
-              logical=bw<=730,
-              fail_appear_two_yr=if_else(logical,1,0),
-              fail_appear_two_plus=if_else(!logical,1,0))%>%
-        select(person_id,case_number,fail_appeared,fail_appear_two_yr,fail_appear_two_plus)%>%
+        mutate(EventDate=mdy(EventDate,tz="UTC"), #format = "%m/%d/%Y"
+               screening_date=ymd_hms(screening_date),#format = "%Y-%m-%d %T""
+#mdy() fcn automatically converts to Date object, ymd_hms() function converts to POSIXt object, so 
+#specify tz="UTC" to get mdy() to convert to POSIXt object
+               days_bw=as.numeric(screening_date-EventDate,units="days"),
+               logical=days_bw<=730,
+               fail_appear_two_yr=if_else(logical&fail_appeared==1,1,0),
+               fail_appear_two_plus=if_else(!logical&fail_appeared==1,1,0)
+               )%>%
+        select(person_id,case_number,fail_appear_two_yr,fail_appear_two_plus)%>%
 
         group_by(person_id)%>%
           summarise(fail_appear_two_yr=if_else(sum(fail_appear_two_yr)>0,1,0),
                     fail_appear_two_plus=if_else(sum(fail_appear_two_plus)>0,1,0)
                     )
 
-# all(arnold3$person_id.x==arnold3$person_id.y,na.rm=T)
-# View(filter(arnold3,person_id.x!=person_id.y))
+View(head(arnold3,10))
 
-# View(filter(arnold3,fail_appeared==1))
-# View(arnold3)
 ```
 
 Dev code
 ```{r}
 test=arnold3%>%
       filter(fail_appeared==1)%>%
-      mutate(bw=screening_date-EventDate,logical=bw<=730,fail_appear_two_yr=if_else(logical,1,0))
+      mutate(days_bw=screening_date-EventDate,logical=bw<=730,fail_appear_two_yr=if_else(logical,1,0))
 
 #View(filter(test,bw==1))
 View(filter(test,fail_appeared==1))  
