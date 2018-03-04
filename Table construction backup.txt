@@ -87,8 +87,6 @@ dfnew=left_join(dfnew, prisonhistorynew, by="person_id")
 df_screendate identifies the COMPAS offense date by taking the offense which occurred closest to the compas screening date. people who have two screening dates have two COMPAS offenses. 
 
 df_beforeCOMPAS removes the COMPAS offense from the dataset. We will calculate the features table from this, because we don't want to include the offense that somebody is brought in on, in the recidivism prediction algorithm.  
-
-df_afterCOMPAS includes all entries of dfnew after the FIRST screening date of each person, because if they have 2 screening dates, then they clearly did recidivate. So we need all information after that first screening date. 
 ```{r}
 #Does NOT include the offense they're brought in on
 df_screendate=dfnew%>%
@@ -107,38 +105,27 @@ df_screendate=dfnew%>%
                #this one doesn't require that the T/F options be same data type
                COMPAS_offense_date=as.character(COMPAS_offense_date),
                COMPAS_offense_date=ifelse(gap>30,NA,COMPAS_offense_date),
-               COMPAS_offense_date=ymd(COMPAS_offense_date),
-               #hand checked these upper 3 lines, this works
+               COMPAS_offense_date=ymd_hms(COMPAS_offense_date),
                beforeCOMPAS=if_else(offense_date<COMPAS_offense_date,1,0)
               )
-df_screendate = subset( df_screendate, select = -COMPAS_and_before  )
 
-#Does NOT include the offense they're brought in on
 df_beforeCOMPAS=df_screendate%>%filter(beforeCOMPAS==1)
-df_beforeCOMPAS = subset( df_beforeCOMPAS, select = -beforeCOMPAS  )
         
-# max(select(df_screendate,gap))
-# boxplot(select(df_screendate,gap))
-# fivenum(df_screendate$gap)
-# kurt=filter(df_screendate,person_id==7294) #somebody xwith 2 screening dates
-# 
-# weird_gap=filter(df_screendate, gap>30) #514104 rows/1952325rows from df_screendate
-# #3 lines retyping compas offense date works as expected, end up with 514104 NAs
-# large_gap_ids=unique(weird_gap$person_id)
-# 
-# brandon=filter(df_screendate, person_id==193)
+max(select(df_beforeCOMPAS,gap))
+boxplot(select(df_beforeCOMPAS,gap))
+fivenum(df_beforeCOMPAS$gap)
+kurt=filter(df_beforeCOMPAS,person_id==7294) #somebody with 2 screening dates
+
+weird_gap=filter(df_beforeCOMPAS, gap<=38&gap>30)
+large_gap_ids=unique(weird_gap$person_id)
+
+brandon=filter(df_beforeCOMPAS, person_id==193)
+#problem: people can have multiple screening dates--how to deal with this? 
 
 
-df_afterCOMPAS=dfnew%>%
-               as_data_frame()%>%
-               mutate(offense_date=ymd_hms(offense_date),
-                      screening_date=ymd_hms(screening_date)
-                      )%>%
-               group_by(person_id)%>%
-                  mutate(first_screening=min(screening_date))%>%
-                  ungroup()%>%
-               filter(offense_date>first_screening)
-
+# df_afterCOMPAS=dfnew%>%
+#                mutate(beforeCOMPAS=if_else(offense_date<=screening_date,1,0))%>%
+#                filter(beforeCOMPAS==0)
 
 ```
 
