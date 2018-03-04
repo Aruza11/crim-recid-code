@@ -80,14 +80,38 @@ dfnew=left_join(dfnew, chargenew, by="person_id")
 #Joined dfnew to relevant columns in prisonhistory_df
 prisonhistorynew=select(prisonhistory_df,person_id, in_custody, out_custody)
 prisonhistorynew=rename(prisonhistorynew,prison_in_custody=in_custody, prison_out_custody=out_custody)
+dfnew=left_join(dfnew, prisonhistorynew, by="person_id")
 
+#Does NOT include the offense they're brought in on
 df_beforeCOMPAS=dfnew%>%
-        left_join(.,prisonhistorynew, by="person_id")%>%
-        mutate(beforeCOMPAS=if_else(offense_date<=screening_date,1,0))%>%
-        filter(beforeCOMPAS==1)
+        mutate(COMPAS_and_before=if_else(offense_date<=screening_date,1,0))%>%
+        filter(COMPAS_and_before==1)%>%
+        as_data_frame()%>%
+        mutate(offense_date=ymd_hms(offense_date),
+               screening_date=ymd_hms(screening_date)
+               )%>%
+        group_by(person_id)%>%
+                mutate(COMPAS_offense_date=max(offense_date))%>%
+                ungroup()%>%
+        mutate(gap=as.numeric(screening_date-COMPAS_offense_date,units="days"),
+              beforeCOMPAS=if_else(offense_date<COMPAS_offense_date,1,0)
+              )
+        # filter(beforeCOMPAS==1)
+        
+max(select(df_beforeCOMPAS,gap))
+boxplot(select(df_beforeCOMPAS,gap))
+fivenum(df_beforeCOMPAS$gap)
+kurt=filter(df_beforeCOMPAS,person_id==7294)
+kurt700=filter(kurt,gap==-700)
+unique(kurt$offense_date>kurt$screening_date)
+kurtCOMPAS_offense_date=unique(kurt$COMPAS_offense_date)
+max(kurt$offense_date)==kurtCOMPAS_offense_date
+unique(kurt$offense_date)
+unique(kurt$screening_date)
+#problem: people can have multiple screening dates--how to deal with this? 
+
 
 df_afterCOMPAS=dfnew%>%
-               left_join(.,prisonhistorynew, by="person_id")%>%
                mutate(beforeCOMPAS=if_else(offense_date<=screening_date,1,0))%>%
                filter(beforeCOMPAS==0)
 ```
@@ -174,6 +198,8 @@ features<-features%>%
           left_join(propub_failure_scores,by="person_id")%>%
           rename(fail_to_appear_score=type_of_assessment,
                  fail_to_appear_raw=raw_score,fail_to_appear_decile=decile_score)
+
+rm(propub_failure_scores,propub_recidivism_scores,propub_violence_scores)
 
 ```
 
@@ -418,7 +444,7 @@ arnold2<-df_beforeCOMPAS%>%
 
 
 
-View(head(arnold2,100))
+# View(head(arnold2,100))
                       
 ```
 
@@ -457,7 +483,7 @@ arnold3<-df_beforeCOMPAS%>%
           summarise(fail_appear_two_yr=if_else(sum(fail_appear_two_yr)>0,1,0),
                     fail_appear_two_plus=if_else(sum(fail_appear_two_plus)>0,1,0)
                     )
-
+rm(distinct_fail_to_appear)
 # View(head(arnold3,10))
 
 ```
@@ -543,7 +569,8 @@ features<-features%>%
 
 Write features table to working directory because I want intermediate versions of this table synced on Github  
 ```{r}
-write.csv(features,"features.csv")
+# write.csv(features,"features.csv")
+rm(arnold1,arnold2,arnold3,compas_scores,convictions,convictions_subset,dynamic_drug,dynamic_fel,dynamic_incarceration,dynamic_misdem, fail_to_appear,recid)
 ```
 
 
@@ -551,9 +578,9 @@ write.csv(features,"features.csv")
 --use name as a parameter**
 ```{r}
 #person="miguel hernandez"
-#person="bilal williams"
-#person="edward riddle"
-person="aajah herrington"
+person="bilal williams"
+# person="edward riddle"
+# person="aajah herrington"
 case=filter(dfnew, name==person)
 #case_names=colnames(case)
 
@@ -598,8 +625,10 @@ vis=ggplot(eventstb, aes(colour=event)) +
     scale_x_date(date_breaks="1 year", date_labels="%b %Y")
 
 vis
-infotb
-casenumbers
+distinct(select(case,person_id, case_number,charge, charge_degree, statute, screening_date, offense_date))
+
+# infotb
+# casenumbers
 ```
 
 TODO: 

@@ -165,6 +165,9 @@ ggplot(features, aes(x=age, y=fail_to_appear_raw)) +
 
 
 ```
+Find function that models the lower edge
+
+
 Categorising based on number of felonies/misdemeanors?
 Working with Risk of Violence scores
 ```{r}
@@ -206,6 +209,8 @@ ggplot(features, aes(x=misdem_count_5yrs, y=violence_decile)) +
      ggtitle("Risk of Violence Score vs Number Misdemeanors")
 
 ```
+#min(#misdemeanors, 40)
+
 Exploring more relations
 # A tibble: 7 x 1		# A tibble: 2 x 1		# A tibble: 6 x 1
      marital_status		     sex		              race
