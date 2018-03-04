@@ -169,8 +169,7 @@ statute=df_beforeCOMPAS%>%
           select(statute)%>%
           mutate(truncated=substr(statute,1,3),
           is_violent=if_else(substr(statute,1,3) %in% c("777","782","784","806","812","825","827"),1,0)
-)%>%
-          as_data_frame()
+)
         
 #sort(distinct(statute$truncated))
 #distinct(filter(statute,truncated=="OCS"))
@@ -189,7 +188,7 @@ categorical variables assigned numbers 1 and up as detailed in features table ex
 static features--variables unique to each person, and which  I must assign numbers
 ```{r}
 #use levels(dataset$column) to check what the vectors are
-features=as_data_frame(distinct(df_beforeCOMPAS, person_id, first,last,age,sex,marital_status,race))
+features=distinct(df_beforeCOMPAS, person_id, first,last,age,sex,marital_status,race)
 
 features$sex=factor(features$sex, levels=c("Male", "Female"), labels=c(1,2))
 features$sex=as.numeric(as.character(features$sex))
@@ -214,17 +213,18 @@ propub_failure_scores<-compas_scores%>%
 
 features<-features%>%
           left_join(propub_violence_scores,by="person_id")%>%
-          rename(violence_score=type_of_assessment,
-                 violence_raw=raw_score,violence_decile=decile_score)%>%
+          rename(p_violence_score=type_of_assessment,
+                 p_violence_raw=raw_score,violence_decile=decile_score)%>%
   
           left_join(propub_recidivism_scores,by="person_id")%>%
-          rename(recid_score=type_of_assessment,
-                 recid_raw=raw_score,recid_decile=decile_score)%>%
+          rename(p_recid_score=type_of_assessment,
+                 p_recid_raw=raw_score,recid_decile=decile_score)%>%
 
           left_join(propub_failure_scores,by="person_id")%>%
-          rename(fail_to_appear_score=type_of_assessment,
-                 fail_to_appear_raw=raw_score,fail_to_appear_decile=decile_score)
-
+          rename(p_fail_to_appear_score=type_of_assessment,
+                 p_fail_to_appear_raw=raw_score,fail_to_appear_decile=decile_score)
+          
+ 
 rm(propub_failure_scores,propub_recidivism_scores,propub_violence_scores)
 
 ```
@@ -258,7 +258,6 @@ dynamic_incarceration:
 ```{r}
 dynamic_fel=df_beforeCOMPAS%>%
            distinct(person_id,charge_degree,case_number,charge,screening_date,date_charge_filed) %>%
-           as_data_frame()%>%
 
            mutate(screening_date=ymd_hms(screening_date),
                   date_charge_filed=ymd_hms(date_charge_filed),
@@ -479,24 +478,25 @@ PSA Features: Failure to appear
 .	Prior failure to appear pretrial in the past two years 
 .	Prior failure to appear pretrial older than two years 
 
-Possible issue:  Why are some person_ids missing?
 Note: must convert to dataframe type right away because left_join only works on tbls from the same source. Since I'm joining by case_number, must also make sure case_num columns are the same type. 
+
+You can have multiple failures to appear for EACH case, so I summed them ALL up. 
 
 ```{r}
 distinct_fail_to_appear<-fail_to_appear%>%
                         distinct(EventDate,case_num,fail_appeared)%>%
                         rename(case_number=case_num)
+
 distinct_fail_to_appear$case_number=as.character(distinct_fail_to_appear$case_number)
 
 
 arnold3<-df_beforeCOMPAS%>%
         distinct(person_id,case_number,screening_date)%>%
-        as_data_frame()%>%
         left_join(distinct_fail_to_appear,by="case_number")%>%
 
         mutate(EventDate=mdy(EventDate,tz="UTC"), #format = "%m/%d/%Y"
-               screening_date=ymd_hms(screening_date),#format = "%Y-%m-%d %T""
-#mdy() fcn automatically converts to Date object, ymd_hms() function converts to POSIXt object, so 
+
+#mdy() fcn automatically converts to Date object, ymd_hms() function converts to POSIXt object, so
 #specify tz="UTC" to get mdy() to convert to POSIXt object
                days_bw=as.numeric(screening_date-EventDate,units="days"),
                logical=days_bw<=730,
@@ -504,11 +504,12 @@ arnold3<-df_beforeCOMPAS%>%
                fail_appear_two_plus=if_else(!logical&fail_appeared==1,1,0)
                )%>%
         select(person_id,case_number,fail_appear_two_yr,fail_appear_two_plus)%>%
-
         group_by(person_id)%>%
-          summarise(fail_appear_two_yr=if_else(sum(fail_appear_two_yr)>0,1,0),
-                    fail_appear_two_plus=if_else(sum(fail_appear_two_plus)>0,1,0)
-                    )
+          summarise(fail_appear_two_yr=sum(fail_appear_two_yr),
+                    fail_appear_two_plus=sum(fail_appear_two_plus)
+
+          )
+
 rm(distinct_fail_to_appear)
 # View(head(arnold3,10))
 
@@ -600,61 +601,65 @@ rm(arnold1,arnold2,arnold3,compas_scores,convictions,convictions_subset,dynamic_
 ```
 
 
-**data visualization dfs
---use name as a parameter**
+**data visualization function
 ```{r}
-#person="miguel hernandez"
-person="bilal williams"
-# person="edward riddle"
-# person="aajah herrington"
-case=filter(dfnew, name==person)
-#case_names=colnames(case)
+    #check if use of logical operator "or" is correct
+    #linear spacing for x axis
 
-jailtb=as_data_frame(distinct(select(case,jail_in_custody,jail_out_custody)))
-jailtb=rename(jailtb, incustody=jail_in_custody, outcustody=jail_out_custody)
-jailtb=mutate(jailtb, event="jail")
+case_vis<-function(person,dfnew){
+    case=dfnew%>%
+         filter(name==person)%>%
+         as_data_frame()
 
+    jailtb=case%>%
+           distinct(jail_in_custody,jail_out_custody)%>%
+           rename(incustody=jail_in_custody, outcustody=jail_out_custody)%>%
+           mutate(event="jail")
 
-prisontb=as_data_frame(distinct(select(case,prison_in_custody,prison_out_custody)))
-prisontb=rename(prisontb, incustody=prison_in_custody, outcustody=prison_out_custody)
-prisontb=mutate(prisontb,event="prison")
+    prisontb=case%>%
+           distinct(prison_in_custody,prison_out_custody)%>%
+           rename(incustody=prison_in_custody, outcustody=prison_out_custody)%>%
+           mutate(event="prison")
+    
+    chargetb=case%>%
+           distinct(offense_date)%>%
+           rename(incustody=offense_date)%>%
+           mutate(outcustody=incustody,
+                  event="charge")
+    #Note: these are not unique charges, these are the unique DAYS cases occured
+    #On an events visualization, even if somebody had 20 charges on 1 day, it will still
+    #only appear as 1 point so there's no point in doing anything else. 
+    
+    eventstb=bind_rows(jailtb, prisontb,chargetb)
+    eventstb$incustody=as.Date(eventstb$incustody)
+    eventstb$outcustody=as.Date(eventstb$outcustody)
+    
+    vis=ggplot(eventstb, aes(colour=event)) + 
+        geom_segment(aes(x=(subset(eventstb,event="prison"|"jail")$incustody),
+                         xend=(subset(eventstb,event="prison"|"jail")$outcustody), 
+                         y=event, yend=event),size=3)+
+        geom_point(aes(x=(subset(eventstb,event="charge")$incustody),y=event))+
+        labs(title=person,x="time")+
+        scale_x_date(date_breaks="1 year", date_labels="%b %Y")
+    
+    print(vis)
+    distinct(select(case,person_id, case_number,charge, charge_degree, statute, screening_date,
+                    offense_date))
 
-
-chargetb=as_data_frame(distinct(select(case,offense_date)))
-chargetb=rename(chargetb, incustody=offense_date)
-chargetb=mutate(chargetb,outcustody=incustody,event="charge")
-#Note: these are not unique charges, these are the unique DAYS cases occured
-#On an events visualization, even if somebody had 20 charges on 1 day, it will still
-#only appear as 1 point so there's no point in doing anything else. 
-
-eventstb=bind_rows(jailtb, prisontb,chargetb)
-eventstb$incustody=as.Date(eventstb$incustody)
-eventstb$outcustody=as.Date(eventstb$outcustody)
-
-infotb=as_data_frame(distinct(select(case,name,person_id,sex,race,dob,age,marital_status,type_of_assessment,raw_score,decile_score)))
-casenumbers=as_data_frame(distinct(select(case,name,person_id,case_number)))
-
-infotb$dob=as.Date(infotb$dob)
+}
 ```
 
 Visualization
 ```{r}
-#check if use of logical operator "or" is correct
-#linear spacing for x axis
 
-vis=ggplot(eventstb, aes(colour=event)) + 
-    geom_segment(aes(x=(subset(eventstb,event="prison"|"jail")$incustody),
-                     xend=(subset(eventstb,event="prison"|"jail")$outcustody), 
-                     y=event, yend=event),size=3)+
-    geom_point(aes(x=(subset(eventstb,event="charge")$incustody),y=event))+
-    labs(title=person,x="time")+
-    scale_x_date(date_breaks="1 year", date_labels="%b %Y")
+# person="miguel hernandez"
+# person="bilal williams"
+# person="edward riddle"
+person="aajah herrington"
 
-vis
-distinct(select(case,person_id, case_number,charge, charge_degree, statute, screening_date, offense_date))
+case_vis(person,dfnew)
 
-# infotb
-# casenumbers
+
 ```
 
 TODO: 
