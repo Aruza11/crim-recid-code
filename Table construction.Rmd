@@ -82,38 +82,46 @@ prisonhistorynew=select(prisonhistory_df,person_id, in_custody, out_custody)
 prisonhistorynew=rename(prisonhistorynew,prison_in_custody=in_custody, prison_out_custody=out_custody)
 dfnew=left_join(dfnew, prisonhistorynew, by="person_id")
 
+```
+
+df_screendate identifies the COMPAS offense date by taking the offense which occurred closest to the compas screening date. people who have two screening dates have two COMPAS offenses. 
+df_beforeCOMPAS removes the COMPAS offense from the dataset. We will calculate the features table from this, because we don't want to include the offense that somebody is brought in on, in the recidivism prediction algorithm.  
+```{r}
 #Does NOT include the offense they're brought in on
-df_beforeCOMPAS=dfnew%>%
+df_screendate=dfnew%>%
         mutate(COMPAS_and_before=if_else(offense_date<=screening_date,1,0))%>%
         filter(COMPAS_and_before==1)%>%
         as_data_frame()%>%
         mutate(offense_date=ymd_hms(offense_date),
                screening_date=ymd_hms(screening_date)
                )%>%
-        group_by(person_id)%>%
-                mutate(COMPAS_offense_date=max(offense_date))%>%
-                ungroup()%>%
+        group_by(person_id,screening_date)%>%
+              mutate(COMPAS_offense_date=max(offense_date))%>%
+              #this only gives me the last compas offense 
+              ungroup()%>%
         mutate(gap=as.numeric(screening_date-COMPAS_offense_date,units="days"),
-              beforeCOMPAS=if_else(offense_date<COMPAS_offense_date,1,0)
+               COMPAS_offense_date=if_else(gap>30,NA,COMPAS_offense_date),
+               beforeCOMPAS=if_else(offense_date<COMPAS_offense_date,1,0)
               )
-        # filter(beforeCOMPAS==1)
+
+df_beforeCOMPAS=df_screendate%>%filter(beforeCOMPAS==1)
         
 max(select(df_beforeCOMPAS,gap))
 boxplot(select(df_beforeCOMPAS,gap))
 fivenum(df_beforeCOMPAS$gap)
-kurt=filter(df_beforeCOMPAS,person_id==7294)
-kurt700=filter(kurt,gap==-700)
-unique(kurt$offense_date>kurt$screening_date)
-kurtCOMPAS_offense_date=unique(kurt$COMPAS_offense_date)
-max(kurt$offense_date)==kurtCOMPAS_offense_date
-unique(kurt$offense_date)
-unique(kurt$screening_date)
+kurt=filter(df_beforeCOMPAS,person_id==7294) #somebody with 2 screening dates
+
+weird_gap=filter(df_beforeCOMPAS, gap<=38&gap>30)
+large_gap_ids=unique(weird_gap$person_id)
+
+brandon=filter(df_beforeCOMPAS, person_id==193)
 #problem: people can have multiple screening dates--how to deal with this? 
 
 
-df_afterCOMPAS=dfnew%>%
-               mutate(beforeCOMPAS=if_else(offense_date<=screening_date,1,0))%>%
-               filter(beforeCOMPAS==0)
+# df_afterCOMPAS=dfnew%>%
+#                mutate(beforeCOMPAS=if_else(offense_date<=screening_date,1,0))%>%
+#                filter(beforeCOMPAS==0)
+
 ```
 
 NOTES: 1) df_beforeCOMPAS ONLY CONTAINS INFORMATION FROM BEFORE THE COMPAS EVALUATION (so we can perform predictive analysis on the code). 
