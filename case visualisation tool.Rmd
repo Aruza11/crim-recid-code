@@ -19,59 +19,61 @@ dfnew<-read.csv("C:/Users/Caroline Wang/OneDrive/Duke/Criminal Recidivism/Data t
 
 
 ```{r}
-#person="miguel hernandez"
-#person="bilal williams"
-#person="edward riddle"
-person="aajah herrington"
-case=filter(dfnew, name==person)
-#case_names=colnames(case)
+    #check if use of logical operator "or" is correct
+    #linear spacing for x axis
 
-jailtb=as_data_frame(distinct(select(case,jail_in_custody,jail_out_custody)))
-jailtb=rename(jailtb, incustody=jail_in_custody, outcustody=jail_out_custody)
-jailtb=mutate(jailtb, event="jail")
+case_vis<-function(person,dfnew){
+    case=dfnew%>%
+         filter(name==person)%>%
+         as_data_frame()
 
+    jailtb=case%>%
+           distinct(jail_in_custody,jail_out_custody)%>%
+           rename(incustody=jail_in_custody, outcustody=jail_out_custody)%>%
+           mutate(event="jail")
 
-prisontb=as_data_frame(distinct(select(case,prison_in_custody,prison_out_custody)))
-prisontb=rename(prisontb, incustody=prison_in_custody, outcustody=prison_out_custody)
-prisontb=mutate(prisontb,event="prison")
+    prisontb=case%>%
+           distinct(prison_in_custody,prison_out_custody)%>%
+           rename(incustody=prison_in_custody, outcustody=prison_out_custody)%>%
+           mutate(event="prison")
+    
+    chargetb=case%>%
+           distinct(offense_date)%>%
+           rename(incustody=offense_date)%>%
+           mutate(outcustody=incustody,
+                  event="charge")
+    #Note: these are not unique charges, these are the unique DAYS cases occured
+    #On an events visualization, even if somebody had 20 charges on 1 day, it will still
+    #only appear as 1 point so there's no point in doing anything else. 
+    
+    eventstb=bind_rows(jailtb, prisontb,chargetb)
+    eventstb$incustody=as.Date(eventstb$incustody)
+    eventstb$outcustody=as.Date(eventstb$outcustody)
+    
+    vis=ggplot(eventstb, aes(colour=event)) + 
+        geom_segment(aes(x=(subset(eventstb,event="prison"|"jail")$incustody),
+                         xend=(subset(eventstb,event="prison"|"jail")$outcustody), 
+                         y=event, yend=event),size=3)+
+        geom_point(aes(x=(subset(eventstb,event="charge")$incustody),y=event))+
+        labs(title=person,x="time")+
+        scale_x_date(date_breaks="1 year", date_labels="%b %Y")
+    
+    print(vis)
+    distinct(select(case,person_id, case_number,charge, charge_degree, statute, screening_date,
+                    offense_date))
 
-
-chargetb=as_data_frame(distinct(select(case,offense_date)))
-chargetb=rename(chargetb, incustody=offense_date)
-chargetb=mutate(chargetb,outcustody=incustody,event="charge")
-#Note: these are not unique charges, these are the unique DAYS cases occured
-#On an events visualization, even if somebody had 20 charges on 1 day, it will still
-#only appear as 1 point so there's no point in doing anything else. 
-
-eventstb=bind_rows(jailtb, prisontb,chargetb)
-eventstb$incustody=as.Date(eventstb$incustody)
-eventstb$outcustody=as.Date(eventstb$outcustody)
-
-infotb=as_data_frame(distinct(select(case,name,person_id,sex,race,dob,age,marital_status,type_of_assessment,raw_score,decile_score)))
-casenumbers=as_data_frame(distinct(select(case,name,person_id,case_number)))
-
-infotb$dob=as.Date(infotb$dob)
+}
 ```
 
 Visualization
 ```{r}
-#check if use of logical operator "or" is correct
-#linear spacing for x axis
 
-vis=ggplot(eventstb, aes(colour=event)) + 
-    geom_segment(aes(x=(subset(eventstb,event="prison"|"jail")$incustody),
-                     xend=(subset(eventstb,event="prison"|"jail")$outcustody), 
-                     y=event, yend=event),size=3)+
-    geom_point(aes(x=(subset(eventstb,event="charge")$incustody),y=event))+
-    labs(title=person,x="time")+
-    scale_x_date(date_breaks="1 year", date_labels="%b %Y")
+# person="miguel hernandez"
+# person="bilal williams"
+# person="edward riddle"
+person="aajah herrington"
 
-vis
-infotb
-casenumbers
+case_vis(person,dfnew)
+
+
 ```
-
-TODO: 
-Work on displaying the degree of each charge above the charge pts
-Check validity of logical operator "or" in graph code
-Get prison/jail time lengths to look bigger--change scale? 

@@ -137,42 +137,69 @@ Similar: similar number of  priors, similar number of offenses,
 Issue: we only have the criminal history information for people in ProPublica's dataset, and ProPublica only looked at pretrial people. Therefore we can only look at the Compas algorithm for pretrial screening (and in fact, we will be looking at the features table I generated in an earlier bit of code)
 
 ```{r}
-ggplot(features, aes(x=age, y=violence_decile)) +
-     geom_point(shape=1)  +
-     ggtitle("Risk of Violence Score vs Age")
 
 ggplot(features, aes(x=age, y=violence_raw)) +
      geom_point(shape=1)  +
      ggtitle("Risk of Violence Raw vs Age")
 
 
-ggplot(features, aes(x=age, y=recid_decile)) +
-     geom_point(shape=1)  +
-     ggtitle("Risk of Recidivism Score vs Age")
-
 ggplot(features, aes(x=age, y=recid_raw)) +
      geom_point(shape=1)  +
      ggtitle("Risk of Recidivism Raw vs Age")
 
 
-ggplot(features, aes(x=age, y=fail_to_appear_decile)) +
-     geom_point(shape=1)  +
-     ggtitle("Risk of Failure to Appear Score vs Age")
-
 ggplot(features, aes(x=age, y=fail_to_appear_raw)) +
      geom_point(shape=1)  +
      ggtitle("Risk of Failure to Appear Raw vs Age")
 
+############
+
+ggplot(features, aes(x=age, y=violence_decile)) +
+     geom_point(shape=1)  +
+     ggtitle("Risk of Violence Score vs Age")
+
+ggplot(features, aes(x=age, y=recid_decile)) +
+     geom_point(shape=1)  +
+     ggtitle("Risk of Recidivism Score vs Age")
+
+ggplot(features, aes(x=age, y=fail_to_appear_decile)) +
+     geom_point(shape=1)  +
+     ggtitle("Risk of Failure to Appear Score vs Age")
+
 
 ```
-Find function that models the lower edge
+Find function that models the "lower edge"
+From rdoc on top_n: n is the number of rows to return. If x is grouped, this is the number of rows per group. Will include more than n rows if there are ties.
+If n is positive, selects the top n rows. If negative, selects the bottom n rows.
+```{r}
+age_subset=features%>%
+           select(person_id, first, last, age, violence_raw)%>%
+           filter(age>18&age<=70)%>%
+           group_by(age)%>%
+              arrange(violence_raw,.by_group=TRUE)%>%
+              top_n(n=-5,wt=violence_raw)
+
+# View(age_subset)
+
+ggplot(age_subset,aes(x=age,y=violence_raw+5)) +
+      geom_point(shape=1)+
+      geom_smooth(method="glm",
+                  method.args=list(family=gaussian(link="log")))
+
+exponential.model <- lm(log(age_subset$violence_raw+5)~ age_subset$age)
+summary(exponential.model)
+
+violraw.exponential2 <- exp(predict(exponential.model,list(Age=age_subset$age)))
+plot(age_subset$age, age_subset$violence_raw+5)
+lines(age_subset$age, violraw.exponential2,lwd=2, col = "red", xlab = "Age", ylab = "Violence Raw Score")
+
+
+```
 
 
 Categorising based on number of felonies/misdemeanors?
 Working with Risk of Violence scores
 ```{r}
-# felonies_0_5<-filter(features,felony_count_person<5)
-# felonies_5_10<-filter(features, felony_count_person>=5&felony_count_person<10)
 
 ggplot(features, aes(x=felony_count_person, y=violence_raw)) +
      geom_point(shape=1)  +

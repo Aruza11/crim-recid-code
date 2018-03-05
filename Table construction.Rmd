@@ -12,6 +12,7 @@ library(tidyverse)
   #includes core: ggplot2,dplyr,tidyr,readr,purrr,tibble
 library(magrittr)
 library(lubridate)
+
 setwd("C:/Users/Caroline Wang/OneDrive/Duke/Criminal Recidivism/crim-recid-code")
 
 
@@ -589,8 +590,20 @@ features<-features%>%
             left_join(arnold1,by=NULL)%>%
             left_join(arnold2,by=NULL)%>% 
             left_join(arnold3,by=NULL)%>%
-            left_join(recid, by=NULL) 
-#rows in x with no entries in y have NA values in the new columns
+            left_join(recid, by=NULL)%>%
+            
+            rename(p_sex=sex,p_race=race,p_age=age,p_marital_status=marital_status,
+                   p_felony_count_person=felony_count_person,p_yrs5_felcount_person=yrs5_felcount_person,
+                   p_prison_visits=prison_visits,p_prison_time=prison_time,
+                   p_jail_visits=jail_visits,p_jail_time=jail_time,p_numcases=numcases,
+                   p_misdem_count_person=misdem_count_person,p_misdem_count_5yrs=misdem_count_5yrs,
+                   p_current_age=current_age,
+                   p_current_violent_offense=current_violent_offense,
+                   p_current_violent_twenty=current_violent_twenty,
+                   p_prior_incarceration=prior_incarceration,cq_prior_conviction_f=prior_conviction_F,
+                   cq_prior_conviction_M=prior_conviction_M,cq_violent_conviction=violent_conviction,
+                   cq_fail_appear_two_yr=fail_appear_two_yr, cq_fail_appear_two_plus=fail_appear_two_plus)
+
 
 ```
 
@@ -662,9 +675,3 @@ case_vis(person,dfnew)
 
 ```
 
-TODO: 
-Work on displaying the degree of each charge above the charge pts
-Check validity of logical operator "or" in graph code
-Get prison/jail time lengths to look bigger--change scale? 
-
-To do: proofread all of code, compute whether or not they recidivated (y_recidivated). Drugs, traffic crimes, broward-sheriff-data, add compas score, check latest screening date. Question: how do I define recidivated? Use Arnold PSA's definition of recidivation. 
