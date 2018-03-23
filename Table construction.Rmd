@@ -175,13 +175,13 @@ statute=df_beforeCOMPAS%>%
 #sort(distinct(statute$truncated))
 #distinct(filter(statute,truncated=="OCS"))
 
-filter(df_beforeCOMPAS,statute=="ODRD631")
+# filter(df_beforeCOMPAS,statute=="ODRD631")
 
 #ODVD463
 
-df_beforeCOMPAS%>%filter(statute=="OHDD58")%>%
-        select(first,last,case_number)%>%
-        View()
+#df_beforeCOMPAS%>%filter(statute=="OHDD58")%>%
+#        select(first,last,case_number)%>%
+#        View()
 ```
 
 
