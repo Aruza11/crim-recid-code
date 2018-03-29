@@ -221,15 +221,15 @@ propub_failure_scores<-compas_scores%>%
 features<-features%>%
           left_join(propub_violence_scores,by="person_id")%>%
           rename(p_violence_score=type_of_assessment,
-                 p_violence_raw=raw_score,violence_decile=decile_score)%>%
+                 p_violence_raw=raw_score,p_violence_decile=decile_score)%>%
   
           left_join(propub_recidivism_scores,by="person_id")%>%
           rename(p_recid_score=type_of_assessment,
-                 p_recid_raw=raw_score,recid_decile=decile_score)%>%
+                 p_recid_raw=raw_score,p_recid_decile=decile_score)%>%
 
           left_join(propub_failure_scores,by="person_id")%>%
           rename(p_fail_to_appear_score=type_of_assessment,
-                 p_fail_to_appear_raw=raw_score,fail_to_appear_decile=decile_score)
+                 p_fail_to_appear_raw=raw_score,p_fail_to_appear_decile=decile_score)
 
 #nn<-reshape(d,timevar="cat",idvar="sample",direction="wide")
 # compas_flat=compas_scores%>%

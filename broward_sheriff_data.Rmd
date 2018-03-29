@@ -138,31 +138,31 @@ Issue: we only have the criminal history information for people in ProPublica's 
 
 ```{r}
 
-ggplot(features, aes(x=age, y=violence_raw)) +
+ggplot(features, aes(x=p_age, y=p_violence_raw)) +
      geom_point(shape=1)  +
      ggtitle("Risk of Violence Raw vs Age")
 
 
-ggplot(features, aes(x=age, y=recid_raw)) +
+ggplot(features, aes(x=p_age, y=p_recid_raw)) +
      geom_point(shape=1)  +
      ggtitle("Risk of Recidivism Raw vs Age")
 
 
-ggplot(features, aes(x=age, y=fail_to_appear_raw)) +
+ggplot(features, aes(x=p_age, y=p_fail_to_appear_raw)) +
      geom_point(shape=1)  +
      ggtitle("Risk of Failure to Appear Raw vs Age")
 
 ############
 
-ggplot(features, aes(x=age, y=violence_decile)) +
+ggplot(features, aes(x=p_age, y=violence_decile)) +
      geom_point(shape=1)  +
      ggtitle("Risk of Violence Score vs Age")
 
-ggplot(features, aes(x=age, y=recid_decile)) +
+ggplot(features, aes(x=p_age, y=recid_decile)) +
      geom_point(shape=1)  +
      ggtitle("Risk of Recidivism Score vs Age")
 
-ggplot(features, aes(x=age, y=fail_to_appear_decile)) +
+ggplot(features, aes(x=p_age, y=fail_to_appear_decile)) +
      geom_point(shape=1)  +
      ggtitle("Risk of Failure to Appear Score vs Age")
 
@@ -174,11 +174,11 @@ If n is positive, selects the top n rows. If negative, selects the bottom n rows
 
 ```{r}
 age_subset=features%>%
-           select(person_id, first, last, age, violence_raw)%>%
-           filter(age>18&age<=70)%>%
-           group_by(age)%>%
-              arrange(violence_raw,.by_group=TRUE)%>%
-              top_n(n=-5,wt=violence_raw)
+           select(person_id, first, last, p_age, p_violence_raw)%>%
+           filter(p_age>18&p_age<=70)%>%
+           group_by(p_age)%>%
+              arrange(p_violence_raw,.by_group=TRUE)%>%
+              top_n(n=-5,wt=p_violence_raw)
 
 # View(age_subset)
 
@@ -187,7 +187,7 @@ age_subset=features%>%
 #       geom_smooth(method="glm",
 #                   method.args=list(family=gaussian(link="log")))
 
-exponential.model <- lm(log(age_subset$violence_raw+5)~ age_subset$age)
+exponential.model <- lm(log(age_subset$p_violence_raw+5)~ age_subset$p_age)
     
     #getting equation of model
     summary(exponential.model)
@@ -195,19 +195,21 @@ exponential.model <- lm(log(age_subset$violence_raw+5)~ age_subset$age)
        coef()%>%
        as.vector()
     exp_reg=function(x){exp(cf[2]*x+cf[1])-5} #x=age
-
+    exp_reg_improved=function(x){exp(-0.0294475*x+1.5340542)-5}
+    
     # plot(exp_reg,1,70) #the equation of the exponential regression 
  
 #plotting the regression line on top of age_subset points
 violraw.exponential2 <- exp(predict(exponential.model,list(Age=age_subset$age)))
-plot(age_subset$age, age_subset$violence_raw)
-lines(age_subset$age, violraw.exponential2-5,lwd=2, col = "red", xlab = "Age", ylab = "Violence Raw Score")
+plot(age_subset$p_age, age_subset$p_violence_raw)
+lines(age_subset$p_age, violraw.exponential2-5,lwd=2, col = "red", xlab = "Age", ylab = "Violence Raw Score")
 
 #plotting the regression line on top of ALL points
-ggplot(features, aes(x=age, y=violence_raw)) +
+ggplot(features, aes(x=p_age, y=p_violence_raw)) +
      geom_point(shape=1)  +
      ggtitle("Regression Line Age vs Violence Score") +
      stat_function(fun = exp_reg, aes(colour="red")) + 
+     stat_function(fun=exp_reg_improved, aes(colour="blue"))
        # geom_line(aes(colour="blue"))+
 
      xlim(18,70)
@@ -216,39 +218,46 @@ ggplot(features, aes(x=age, y=violence_raw)) +
 
 ```
 
+Subtracting out variables: according to Sheriff's office, factors are age, total priors, prior failures to appear at scheduled court appearances, history of illegal substance use, mental health, time at previous or prior residences
+
 Trying to subtract out age from violence score based on regression
-A function which takes in the features table, subtracts out the age variable from the *violence raw score* and plots the before and after plots. 
+
+*Total misdemeanors and felonys 
 ```{r}
 
 exp_reg=function(x){exp(cf[2]*x+cf[1])-5} #x=age
 
-no_age=features%>%
-          select(person_id, age, felony_count_person,violence_raw)%>%
-          mutate(raw_minus_age=violence_raw-exp_reg(age))
-      
-  #original plot 
-ggplot(features, aes(x=felony_count_person, y=violence_raw)) +
+#original plot 
+ggplot(features, aes(x=p_felony_count_person+p_misdem_count_person, y=p_violence_raw)) +
        geom_point(shape=1)  +
        ggtitle("Risk of Violence Raw vs Felonies per Person (original)")
-  
-  #plot with no age  
-ggplot(no_age, aes(x=felony_count_person, y=raw_minus_age)) +
-      geom_point(shape=1)  +
-      ggtitle("Risk of Violence Raw vs Felonies per Person (no age)")
-  
+
+
+for(w in c(.5,1,2,5,10,20)){
+
+    no_age=features%>%
+              select(person_id, p_age, p_felony_count_person,p_misdem_count_person,p_violence_raw)%>%
+              mutate(raw_minus_age=p_violence_raw-w*exp_reg(p_age))
+    
+      #plot with no age  
+    print(ggplot(no_age, aes(x=p_felony_count_person+p_misdem_count_person, y=raw_minus_age)) +
+          geom_point(shape=1)  +
+          ggtitle(paste0("Risk of Violence Raw vs Felonies per Person (weight",w,")"))
+          )
+}
 
 ```
 
-Same as above but with misdemeanors
+
 ```{r}
-exp_reg=exp(cf[2]*age+cf[1])-5
+exp_reg=exp(cf[2]*p_age+cf[1])-5
 
 no_age_misdem=features%>%
-          select(person_id, age, misdem_count_person,violence_raw)%>%
-          mutate(raw_minus_age=violence_raw-exp_reg)
+          select(person_id, p_age, cq_misdem_count_person,p_violence_raw)%>%
+          mutate(raw_minus_age=p_violence_raw-exp_reg)
       
   #original plot 
-ggplot(features, aes(x=misdem_count_person, y=violence_raw)) +
+ggplot(features, aes(x=misdem_count_person, y=p_violence_raw)) +
        geom_point(shape=1)  +
        ggtitle("Risk of Violence Raw vs Misdemeanors per Person (original)")
   
@@ -265,22 +274,22 @@ Categorising based on number of felonies/misdemeanors?
 Working with Risk of Violence scores
 ```{r}
 #felonies
-ggplot(features, aes(x=felony_count_person, y=violence_raw)) +
+ggplot(features, aes(x=felony_count_person, y=p_violence_raw)) +
      geom_point(shape=1)  +
      ggtitle("Risk of Violence Raw vs Number Felonies")
 
 
-ggplot(features, aes(x=yrs5_felcount_person, y=violence_raw)) +
+ggplot(features, aes(x=yrs5_felcount_person, y=p_violence_raw)) +
      geom_point(shape=1)  +
      ggtitle("Risk of Violence Raw vs Number Felonies")
 
 #misdemeanors
-ggplot(features, aes(x=misdem_count_person, y=violence_raw)) +
+ggplot(features, aes(x=misdem_count_person, y=p_violence_raw)) +
      geom_point(shape=1)  +
      ggtitle("Risk of Violence Raw vs Number Misdemeanors")
 
 
-ggplot(features, aes(x=misdem_count_5yrs, y=violence_raw)) +
+ggplot(features, aes(x=misdem_count_5yrs, y=p_violence_raw)) +
      geom_point(shape=1)  +
      ggtitle("Risk of Violence Raw vs Number Misdemeanors")
 
@@ -302,23 +311,23 @@ Exploring more relations
 
 ```{r}
 #Risk of violence and current violent offense 
-ggplot(features, aes(x=current_violent_offense, y=violence_raw)) +
+ggplot(features, aes(x=current_violent_offense, y=p_violence_raw)) +
      geom_point(shape=1)  +
      ggtitle("Risk of Violence Raw vs Current Violent Offense")
 
 #Risk of violence vs race
-ggplot(features, aes(x=race, y=violence_raw)) +
+ggplot(features, aes(x=race, y=p_violence_raw)) +
      geom_point(shape=1)  +
      ggtitle("Risk of Violence Raw vs Race")
 
 
 #Risk of violence vs sex
-ggplot(features, aes(x=sex, y=violence_raw)) +
+ggplot(features, aes(x=sex, y=p_violence_raw)) +
      geom_point(shape=1)  +
      ggtitle("Risk of Violence Raw vs Sex")
 
 #Risk of violence vs marital status
-ggplot(features, aes(x=marital_status, y=violence_raw)) +
+ggplot(features, aes(x=marital_status, y=p_violence_raw)) +
      geom_point(shape=1)  +
      ggtitle("Risk of Violence Raw vs Marital Status")
 
