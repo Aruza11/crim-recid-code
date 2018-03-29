@@ -6,15 +6,15 @@ output: html_notebook
 This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
 
 Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Ctrl+Shift+Enter*. 
+
+setwd("C:/Users/Caroline Wang/OneDrive/Duke/Criminal Recidivism/crim-recid-code")
 ```{r}
 library(stringr)
 library(tidyverse)
   #includes core: ggplot2,dplyr,tidyr,readr,purrr,tibble
 library(magrittr)
 library(lubridate)
-
-setwd("C:/Users/Caroline Wang/OneDrive/Duke/Criminal Recidivism/crim-recid-code")
-
+library(reshape2)
 
 ```
 
@@ -41,11 +41,13 @@ people_df<-tbl(db,"people")
 ```{r}
 fail_to_appear<-read.csv("C:/Users/Caroline Wang/OneDrive/Duke/Criminal Recidivism/Data tables/fail_to_appear.csv")
 convictions<-read.csv("C:/Users/Caroline Wang/OneDrive/Duke/Criminal Recidivism/Data tables/convicted_from_disps.csv")
-compas_scores<-read.csv("C:/Users/Caroline Wang/OneDrive/Duke/Criminal Recidivism/Data tables/compas_scores.csv")
+compas_scores<-compas_df%>%
+                select(person_id, type_of_assessment, raw_score, decile_score,screening_date)%>%
+                as_data_frame()
 
 ```
 
-Writin individuals' compas score to file. I am doing this separately because I want the features table to be 1 row per person, which it cannot be if I add the compas scores (b/c each person has 3 scores for compas). *Note: some people have more than 1 set of COMPAS scores.*
+Writing individuals' compas score to file. I am doing this separately because I want the features table to be 1 row per person, which it cannot be if I add the compas scores (b/c each person has 3 scores for compas). *Note: some people have more than 1 set of COMPAS scores.*
 
 ```{r}
 # compas_df%>%
@@ -57,12 +59,14 @@ Writin individuals' compas score to file. I am doing this separately because I w
 Creating a new df from a subset of compas_df, altering names of some columns
 Starting with compas_df b/c I don't want people I don't have compas scores for
 ```{r}
-dfnew=select(compas_df,id,person_id, first, last, marital_status, screening_date,scale_id, type_of_assessment, raw_score, decile_score)
-dfnew=rename(dfnew, person_score_id=id)
+dfnew=select(compas_df,id,person_id, first, last,compas_person_id,compas_case_id,compas_assessment_id,
+             screening_date,scale_id,type_of_assessment, marital_status, 
+             agency_text,custody_status,raw_score, decile_score)
+      
 
 #Joining dfnew to relevant columns in people_df
-peoplenew=select(people_df,id, name,sex, race, dob, age, c_case_number)
-peoplenew=rename(peoplenew,person_id=id)
+peoplenew=select(people_df,id, name,sex, race, dob, age, c_case_number)%>%
+          rename(person_id=id)
 dfnew=left_join(dfnew, peoplenew, by="person_id")
 
 #Joining dfnew to relevant columns in casearrest_df--COMMENTED OUT FOR NOW
@@ -82,6 +86,8 @@ dfnew=left_join(dfnew, chargenew, by="person_id")
 prisonhistorynew=select(prisonhistory_df,person_id, in_custody, out_custody)
 prisonhistorynew=rename(prisonhistorynew,prison_in_custody=in_custody, prison_out_custody=out_custody)
 dfnew=left_join(dfnew, prisonhistorynew, by="person_id")
+
+rm(peoplenew,jailhistorynew,chargenew,prisonhistorynew)
 
 ```
 
@@ -189,7 +195,7 @@ categorical variables assigned numbers 1 and up as detailed in features table ex
 static features--variables unique to each person, and which  I must assign numbers
 ```{r}
 #use levels(dataset$column) to check what the vectors are
-features=distinct(df_beforeCOMPAS, person_id, first,last,age,sex,marital_status,race)
+features=distinct(df_beforeCOMPAS, person_id, first,last,age,sex,marital_status,race,compas_person_id,compas_case_id,compas_assessment_id,screening_date,agency_text,custody_status)
 
 features$sex=factor(features$sex, levels=c("Male", "Female"), labels=c(1,2))
 features$sex=as.numeric(as.character(features$sex))
@@ -224,7 +230,12 @@ features<-features%>%
           left_join(propub_failure_scores,by="person_id")%>%
           rename(p_fail_to_appear_score=type_of_assessment,
                  p_fail_to_appear_raw=raw_score,fail_to_appear_decile=decile_score)
-          
+
+#nn<-reshape(d,timevar="cat",idvar="sample",direction="wide")
+# compas_flat=compas_scores%>%
+#             # group_by(person_id,screening_date)%>%
+#                 select(person_id,screening_date,raw_score, type_of_assessment)%>%
+#                 dcast(person_id+screening_date~type_of_assessment, value.var="raw_score")    
  
 rm(propub_failure_scores,propub_recidivism_scores,propub_violence_scores)
 
@@ -291,10 +302,11 @@ dynamic_incarceration=df_beforeCOMPAS %>%
                                )%>%
 
                         group_by(person_id) %>%
-                           summarize(prison_visits=n_distinct(prison_in_custody),
+                           summarize(prison_visits=n_distinct(prison_in_custody,na.rm=TRUE),
+                                     
                                      prison_time=sum(unique(prison_time)),
 
-                                     jail_visits=n_distinct(jail_in_custody),
+                                     jail_visits=n_distinct(jail_in_custody,na.rm=TRUE),
                                      jail_time=sum(unique(jail_time)),
                                      numcases=n_distinct(case_number)
                                      )
@@ -433,42 +445,45 @@ arnold1<-df_beforeCOMPAS%>%
 
 
 PSA Features: Convictions
-.	Prior misdemeanor conviction 
-.	Prior felony conviction 
-.	Prior violent conviction
+.	Prior misdemeanor convictions 
+.	Prior felony convictions 
+.	Prior violent convictions
+* Total number priors (
 
 a table with person_id,case_number,charge_number,charge_degree,convicted or not
 ISSUE: Missing many dispositions; must reparse XML string
   
   Use case 11020953CF10A to debug this issue; should have 3 charges but I currently only have information for the first 
-Code status (2/4/18): this chunk works, but because my convictions parsing is flawed, it has many NAs
 ```{r}
 convictions_subset<-convictions%>%
-                      select(case_number,Charge,convicted)%>%  
-                      rename(charge_number=Charge)  
+                      select(case_number,Charge,convicted,JudgementDate)%>%  
+                      rename(charge_number=Charge)%>%
+                      mutate(JudgementDate=ymd(JudgementDate))%>%
+                      group_by(case_number,charge_number)%>%
+                       filter(JudgementDate==max(JudgementDate)) 
+#want the latest disposition per case; some cases/charges have more than one disposition
 
 arnold2<-df_beforeCOMPAS%>%
-            distinct(person_id,case_number,charge_number,charge_degree,charge,statute)%>%
+            distinct(person_id,case_number,charge_number,charge_degree,statute)%>%
             as_data_frame()%>%
-            right_join(convictions_subset, by=c("case_number","charge_number"))%>%
-            #right_join b/c I want to be sure that I have all rows of convictions subset
-            #insufficient to left_join by case_number and charge_number because some cases and charges have more than one disposition
+            left_join(convictions_subset, by=c("case_number","charge_number"))%>%
+  
             mutate(is_felony = if_else(substr(charge_degree,2,2)=="F",1,0),
                    is_misdem= if_else(substr(charge_degree,2,2)=="M",1,0),
                    is_violent=if_else(substr(statute,1,3) %in% c("777","782","784","794","806","812","825","827"),1,0),
 
                    prior_conviction_F=if_else(is_felony==1&convicted==1,1,0),
                    prior_conviction_M=if_else(is_misdem==1&convicted==1,1,0),
-                   violent_conviction=if_else(is_violent==1&convicted==1,1,0))%>%
+                   violent_conviction=if_else(is_violent==1&convicted==1,1,0))
+            # group_by(person_id)%>%
+            #   summarise(
+            #             prior_conviction_F=sum(prior_conviction_F),
+            #             prior_conviction_M=sum(prior_conviction_M),
+            #             violent_conviction=sum(is_violent),
+            #              total_convictions=sum(convicted)
+            #             )
 
-            group_by(person_id)%>%
-              summarise(
-                        prior_conviction_F=if_else(sum(prior_conviction_F)>0,1,0),
-                        prior_conviction_M=if_else(sum(prior_conviction_M)>0,1,0),
-                        violent_conviction=if_else(sum(is_violent)>0,1,0)
-                        )
-
-
+checkarn=distinct(arnold2,charge_number,case_number)
 
 # View(head(arnold2,100))
                       
@@ -580,6 +595,7 @@ recid<-df_afterCOMPAS%>%
 
 
 Merged all features tables together(static, dynamic, arnold)
+Column names with p_ come from the 6 propublica tables, column names with cq_ before come from the Broward Clerk's data we queried.  
 ```{r}
 
 features<-features%>%
@@ -600,7 +616,7 @@ features<-features%>%
                    p_current_age=current_age,
                    p_current_violent_offense=current_violent_offense,
                    p_current_violent_twenty=current_violent_twenty,
-                   p_prior_incarceration=prior_incarceration,cq_prior_conviction_f=prior_conviction_F,
+                   p_prior_incarceration=prior_incarceration,cq_prior_conviction_F=prior_conviction_F,
                    cq_prior_conviction_M=prior_conviction_M,cq_violent_conviction=violent_conviction,
                    cq_fail_appear_two_yr=fail_appear_two_yr, cq_fail_appear_two_plus=fail_appear_two_plus)
 
@@ -609,8 +625,20 @@ features<-features%>%
 
 Write features table to working directory because I want intermediate versions of this table synced on Github  
 ```{r}
-# write.csv(features,"features.csv")
-rm(arnold1,arnold2,arnold3,compas_scores,convictions,convictions_subset,dynamic_drug,dynamic_fel,dynamic_incarceration,dynamic_misdem, fail_to_appear,recid)
+write.csv(features,"features.csv")
+#rm(arnold1,arnold2,arnold3,compas_scores,convictions,convictions_subset,dynamic_drug,dynamic_fel,dynamic_incarceration,dynamic_misdem, fail_to_appear,recid)
+```
+
+
+Features table checks
+```{r}
+#somebody who goes to prison should also always have gone to jail
+
+nrow(filter(features,p_prison_visits>0,p_jail_visits==0))
+#somebody who went to prison should also have been convicted
+nrow(filter(features, p_prison_visits>0,cq_prior_conviction_F==0,cq_prior_conviction_M==0))
+#violent conviction should imply conviction for felony or misdem
+nrow(filter(features, cq_violent_conviction==1,cq_prior_conviction_F==0,cq_prior_conviction_M==0))
 ```
 
 
