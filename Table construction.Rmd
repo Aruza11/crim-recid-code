@@ -195,7 +195,8 @@ categorical variables assigned numbers 1 and up as detailed in features table ex
 static features--variables unique to each person, and which  I must assign numbers
 ```{r}
 #use levels(dataset$column) to check what the vectors are
-features=distinct(df_beforeCOMPAS, person_id, first,last,age,sex,marital_status,race,compas_person_id,compas_case_id,compas_assessment_id,screening_date,agency_text,custody_status)
+features=distinct(df_beforeCOMPAS, person_id, first,last,age,sex,marital_status,race,compas_person_id,compas_case_id,compas_assessment_id,screening_date,agency_text,custody_status)%>%
+      mutate(screening_date=ymd_hms(screening_date))
 
 features$sex=factor(features$sex, levels=c("Male", "Female"), labels=c(1,2))
 features$sex=as.numeric(as.character(features$sex))
@@ -207,27 +208,30 @@ features$race=factor(features$race, levels=c("Caucasian", "African-American","Hi
 features$race=as.numeric(as.character(features$race))
 
 propub_violence_scores<-compas_scores%>%
-                        select(person_id, type_of_assessment,raw_score,decile_score)%>%
+                        select(person_id, type_of_assessment,raw_score,decile_score,screening_date)%>%
+                        mutate(screening_date=ymd_hms(screening_date))%>%
                         filter(type_of_assessment=="Risk of Violence")
-
+# View(features%>%mutate(screening_date=ymd_hms(screening_date))%>%left_join(propub_violence_scores,by=c("person_id","screening_date")))
 propub_recidivism_scores<-compas_scores%>%
-                        select(person_id, type_of_assessment,raw_score,decile_score)%>%
+                        select(person_id, type_of_assessment,raw_score,decile_score,screening_date)%>%
+                          mutate(screening_date=ymd_hms(screening_date))%>%
                         filter(type_of_assessment=="Risk of Recidivism")
 
 propub_failure_scores<-compas_scores%>%
-                       select(person_id, type_of_assessment,raw_score,decile_score)%>%
+                       select(person_id, type_of_assessment,raw_score,decile_score,screening_date)%>%
+                          mutate(screening_date=ymd_hms(screening_date))%>%
                        filter(type_of_assessment=="Risk of Failure to Appear")
 
 features<-features%>%
-          left_join(propub_violence_scores,by="person_id")%>%
+          left_join(propub_violence_scores,by=c("person_id","screening_date"))%>%
           rename(p_violence_score=type_of_assessment,
                  p_violence_raw=raw_score,p_violence_decile=decile_score)%>%
   
-          left_join(propub_recidivism_scores,by="person_id")%>%
+          left_join(propub_recidivism_scores,by=c("person_id","screening_date"))%>%
           rename(p_recid_score=type_of_assessment,
                  p_recid_raw=raw_score,p_recid_decile=decile_score)%>%
 
-          left_join(propub_failure_scores,by="person_id")%>%
+          left_join(propub_failure_scores,by=c("person_id","screening_date"))%>%
           rename(p_fail_to_appear_score=type_of_assessment,
                  p_fail_to_appear_raw=raw_score,p_fail_to_appear_decile=decile_score)
 
@@ -237,7 +241,7 @@ features<-features%>%
 #                 select(person_id,screening_date,raw_score, type_of_assessment)%>%
 #                 dcast(person_id+screening_date~type_of_assessment, value.var="raw_score")    
  
-rm(propub_failure_scores,propub_recidivism_scores,propub_violence_scores)
+# rm(propub_failure_scores,propub_recidivism_scores,propub_violence_scores)
 
 ```
 
@@ -461,6 +465,7 @@ convictions_subset<-convictions%>%
                       mutate(JudgementDate=ymd(JudgementDate))%>%
                       group_by(case_number,charge_number)%>%
                        filter(JudgementDate==max(JudgementDate)) 
+
 #want the latest disposition per case; some cases/charges have more than one disposition
 
 arnold2<-df_beforeCOMPAS%>%
@@ -484,7 +489,7 @@ arnold2<-df_beforeCOMPAS%>%
             #             )
 
 checkarn=distinct(arnold2,charge_number,case_number)
-
+View(arnold2 %>% mutate(rowid = row_number()) %>% group_by(charge_number,case_number) %>% filter(n()>1) %>% select(rowid))
 # View(head(arnold2,100))
                       
 ```
