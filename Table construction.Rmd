@@ -37,10 +37,10 @@ prisonhistory_df <-tbl(db,"prisonhistory")
 people_df<-tbl(db,"people")
 ```
 
-
+Don't forget to change convicted_from_disps to the 2nd one
 ```{r}
 fail_to_appear<-read.csv("C:/Users/Caroline Wang/OneDrive/Duke/Criminal Recidivism/Data tables/fail_to_appear.csv")
-convictions<-read.csv("C:/Users/Caroline Wang/OneDrive/Duke/Criminal Recidivism/Data tables/convicted_from_disps.csv")
+convictions<-read.csv("C:/Users/Caroline Wang/OneDrive/Duke/Criminal Recidivism/Data tables/convicted_from_disps.csv") 
 compas_scores<-compas_df%>%
                 select(person_id, type_of_assessment, raw_score, decile_score,screening_date)%>%
                 as_data_frame()
@@ -246,7 +246,7 @@ features<-features%>%
 #                 select(person_id,screening_date,raw_score, type_of_assessment)%>%
 #                 dcast(person_id+screening_date~type_of_assessment, value.var="raw_score")    
  
-# rm(propub_failure_scores,propub_recidivism_scores,propub_violence_scores)
+rm(propub_failure_scores,propub_recidivism_scores,propub_violence_scores)
 
 ```
 
@@ -454,29 +454,28 @@ arnold1<-df_beforeCOMPAS%>%
 
 
 PSA Features: Convictions
+Goal: convert all indicators to counts
 .	Prior misdemeanor convictions 
 .	Prior felony convictions 
 .	Prior violent convictions
 * Total number priors (
 
-a table with person_id,case_number,charge_number,charge_degree,convicted or not
-ISSUE: Missing many dispositions; must reparse XML string
-  
-  Use case 11020953CF10A to debug this issue; should have 3 charges but I currently only have information for the first 
+
+
 ```{r}
 convictions_subset<-convictions%>%
-                      select(case_number,Charge,convicted,JudgementDate)%>%  
+                      select(person_id, case_number,Charge,convicted,JudgementDate)%>%  
                       rename(charge_number=Charge)%>%
                       mutate(JudgementDate=ymd(JudgementDate))%>%
                       group_by(case_number,charge_number)%>%
-                       filter(JudgementDate==max(JudgementDate)) 
+                       filter(JudgementDate==max(JudgementDate))
 
 #want the latest disposition per case; some cases/charges have more than one disposition
 
 arnold2<-df_beforeCOMPAS%>%
             distinct(person_id,case_number,charge_number,charge_degree,statute)%>%
             as_data_frame()%>%
-            left_join(convictions_subset, by=c("case_number","charge_number"))%>%
+            left_join(convictions_subset, by=c("person_id","case_number","charge_number"))%>%
   
             mutate(is_felony = if_else(substr(charge_degree,2,2)=="F",1,0),
                    is_misdem= if_else(substr(charge_degree,2,2)=="M",1,0),
@@ -485,17 +484,17 @@ arnold2<-df_beforeCOMPAS%>%
                    prior_conviction_F=if_else(is_felony==1&convicted==1,1,0),
                    prior_conviction_M=if_else(is_misdem==1&convicted==1,1,0),
                    violent_conviction=if_else(is_violent==1&convicted==1,1,0))%>%
-            distinct()
-            # group_by(person_id)%>%
-            #   summarise(
-            #             prior_conviction_F=sum(prior_conviction_F),
-            #             prior_conviction_M=sum(prior_conviction_M),
-            #             violent_conviction=sum(is_violent),
-            #              total_convictions=sum(convicted)
-            #             )
+            distinct()%>%
+            group_by(person_id)%>%
+              summarise(
+                        prior_conviction_F=sum(prior_conviction_F),
+                        prior_conviction_M=sum(prior_conviction_M),
+                        violent_conviction=sum(is_violent),
+                         total_convictions=sum(convicted)
+                        )
 
-checkarn=distinct(arnold2,charge_number,case_number)
-View(arnold2 %>% mutate(rowid = row_number()) %>% group_by(charge_number,case_number) %>% filter(n()>1) %>% select(rowid))
+# checkarn=distinct(arnold2,charge_number,case_number)
+# View(arnold2 %>% mutate(rowid = row_number()) %>% group_by(charge_number,case_number) %>% filter(n()>1) %>% select(rowid))
 #Possible issues: for personid 35, he had 2 dispositions (1 amended), person id 1499, disposition vacated
 #Condition: take as convicted unless have a vacated disposition
 # View(head(arnold2,100))
