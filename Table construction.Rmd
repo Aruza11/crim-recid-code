@@ -195,20 +195,20 @@ categorical variables assigned numbers 1 and up as detailed in features table ex
 static features--variables unique to each person, and which  I must assign numbers
 ```{r}
 #use levels(dataset$column) to check what the vectors are
-features=df_beforeCOMPAS%>%
+features0=df_beforeCOMPAS%>%
          distinct(person_id,first,last,age,sex,marital_status,race,
                   compas_person_id,compas_case_id,compas_assessment_id,
                   screening_date,agency_text,custody_status)%>%
          mutate(screening_date=ymd_hms(screening_date))
 
-features$sex=factor(features$sex, levels=c("Male", "Female"), labels=c(1,2))
-features$sex=as.numeric(as.character(features$sex))
+features0$sex=factor(features0$sex, levels=c("Male", "Female"), labels=c(1,2))
+features0$sex=as.numeric(as.character(features0$sex))
 
-features$marital_status=factor(features$marital_status, levels=c("Single", "Married", "Separated","Significant Other","Widowed","Divorced","Unknown"), labels=c(1,2,3,4,5,6,7))
-features$marital_status=as.numeric(as.character(features$marital_status))
+features0$marital_status=factor(features0$marital_status, levels=c("Single", "Married", "Separated","Significant Other","Widowed","Divorced","Unknown"), labels=c(1,2,3,4,5,6,7))
+features0$marital_status=as.numeric(as.character(features0$marital_status))
 
-features$race=factor(features$race, levels=c("Caucasian", "African-American","Hispanic","Asian","Native American","Other"), labels=c(1,2,3,4,5,6))
-features$race=as.numeric(as.character(features$race))
+features0$race=factor(features0$race, levels=c("Caucasian", "African-American","Hispanic","Asian","Native American","Other"), labels=c(1,2,3,4,5,6))
+features0$race=as.numeric(as.character(features0$race))
 
 propub_violence_scores<-compas_scores%>%
                         select(person_id, type_of_assessment,raw_score,decile_score,screening_date)%>%
@@ -226,7 +226,7 @@ propub_failure_scores<-compas_scores%>%
                        mutate(screening_date=ymd_hms(screening_date))%>%
                        filter(type_of_assessment=="Risk of Failure to Appear")
 
-features<-features%>%
+features0<-features0%>%
           left_join(propub_violence_scores,by=c("person_id","screening_date"))%>%
           rename(p_violence_score=type_of_assessment,
                  p_violence_raw=raw_score,p_violence_decile=decile_score)%>%
@@ -320,6 +320,21 @@ dynamic_incarceration=df_beforeCOMPAS %>%
                                      numcases=n_distinct(case_number)
                                      )
 
+traffic=df_beforeCOMPAS%>%
+           distinct(person_id,charge_degree,case_number,charge,screening_date,date_charge_filed) %>%
+
+           mutate(screening_date=ymd_hms(screening_date),
+                  date_charge_filed=ymd_hms(date_charge_filed),
+                  is_traffic = if_else(charge_degree=="(0)"|charge_degree=="(TCX)",1,0),
+                  years_bw = (as.numeric(screening_date-date_charge_filed,units="days")/365.25), 
+                  traffic_less_5yr = if_else(years_bw<=5&is_traffic==1,1,0)
+           )%>%
+           distinct(person_id,charge_degree,case_number,charge,is_traffic,traffic_less_5yr)%>%
+           group_by(person_id) %>%
+             summarize(traffic_count_person=sum(is_traffic),
+                       yrs5_trafcount_person = sum(traffic_less_5yr))
+
+
 # View(head(dynamic_incarceration, 100))
 # 
 # test_case_incarc=as_data_frame(filter(df_beforeCOMPAS, person_id==55))
@@ -330,6 +345,7 @@ dynamic_incarceration=df_beforeCOMPAS %>%
 # testperson=as_data_frame(filter(df_beforeCOMPAS, person_id==9761))
 # unique(testperson$case_number) 
 # #involved in 40 distinct cases
+# distinct(select(filter(df_beforeCOMPAS,charge_degree=="(X)"),charge))
 
 
 
@@ -479,16 +495,20 @@ arnold2<-df_beforeCOMPAS%>%
   
             mutate(is_felony = if_else(substr(charge_degree,2,2)=="F",1,0),
                    is_misdem= if_else(substr(charge_degree,2,2)=="M",1,0),
+                   is_traffic=if_else(charge_degree=="(0)"|charge_degree=="(TCX)",1,0),
                    is_violent=if_else(substr(statute,1,3) %in% c("777","782","784","794","806","812","825","827"),1,0),
 
                    prior_conviction_F=if_else(is_felony==1&convicted==1,1,0),
                    prior_conviction_M=if_else(is_misdem==1&convicted==1,1,0),
+                   prior_conviction_T=if_else(is_traffic==1&convicted==1,1,0),
+
                    violent_conviction=if_else(is_violent==1&convicted==1,1,0))%>%
             distinct()%>%
             group_by(person_id)%>%
               summarise(
                         prior_conviction_F=sum(prior_conviction_F),
                         prior_conviction_M=sum(prior_conviction_M),
+                        prior_conviction_T=sum(prior_conviction_T),
                         violent_conviction=sum(is_violent),
                          total_convictions=sum(convicted)
                         )
@@ -610,11 +630,13 @@ Merged all features tables together(static, dynamic, arnold)
 Column names with p_ come from the 6 propublica tables, column names with cq_ before come from the Broward Clerk's data we queried.  
 ```{r}
 
-features<-features%>%
+features<-features0%>%
             left_join(dynamic_fel,by=NULL)%>%
             left_join(dynamic_incarceration,by=NULL)%>%
             left_join(dynamic_misdem,by=NULL)%>%
-            left_join(dynamic_misdem,by=NULL)%>%
+            left_join(dynamic_drug,by=NULL)%>%
+  
+            left_join(traffic,by=NULL)%>%
             left_join(arnold1,by=NULL)%>%
             left_join(arnold2,by=NULL)%>% 
             left_join(arnold3,by=NULL)%>%
@@ -625,11 +647,15 @@ features<-features%>%
                    p_prison_visits=prison_visits,p_prison_time=prison_time,
                    p_jail_visits=jail_visits,p_jail_time=jail_time,p_numcases=numcases,
                    p_misdem_count_person=misdem_count_person,p_misdem_count_5yrs=misdem_count_5yrs,
+                   p_drug_count_person=drug_count_person, p_drug_count_5yrs=drug_count_5yrs,
                    p_current_age=current_age,
                    p_current_violent_offense=current_violent_offense,
                    p_current_violent_twenty=current_violent_twenty,
-                   p_prior_incarceration=prior_incarceration,cq_prior_conviction_F=prior_conviction_F,
+                   p_prior_incarceration=prior_incarceration,
+                   cq_prior_conviction_F=prior_conviction_F,
                    cq_prior_conviction_M=prior_conviction_M,cq_violent_conviction=violent_conviction,
+                   # cq_prior_conviction_T=prior_conviction_T,
+                   cq_total_convictions=total_convictions,
                    cq_fail_appear_two_yr=fail_appear_two_yr, cq_fail_appear_two_plus=fail_appear_two_plus)
 
 
