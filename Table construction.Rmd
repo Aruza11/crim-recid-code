@@ -91,7 +91,8 @@ rm(peoplenew,jailhistorynew,chargenew,prisonhistorynew)
 
 ```
 
-df_screendate identifies the COMPAS offense date by taking the offense which occurred closest to the compas screening date. people who have two screening dates have two COMPAS offenses. 
+df_screendate identifies the COMPAS offense date by taking the offense which occurred closest to the compas screening date. An offense which occurred more than 30 days before the screening date is reassigned to NA b/c it is likely is not actually the COMPAS offense, and that offense is probably missing b/c of clerical error.
+(People who have two screening dates do have two COMPAS offenses using this method). 
 
 df_beforeCOMPAS removes the COMPAS offense from the dataset. We will calculate the features table from this, because we don't want to include the offense that somebody is brought in on, in the recidivism prediction algorithm.  
 
@@ -107,13 +108,14 @@ df_screendate=dfnew%>%
                )%>%
         group_by(person_id,screening_date)%>%
               mutate(COMPAS_offense_date=max(offense_date))%>%
-              #this only gives me the last compas offense 
+              #this only gives me the offense which occurred closest to but still before the screening_date
               ungroup()%>%
         mutate(gap=as.numeric(screening_date-COMPAS_offense_date,units="days"),
                #chose to use base ifelse fcn instead of if_else fcn because 
                #this one doesn't require that the T/F options be same data type
                COMPAS_offense_date=as.character(COMPAS_offense_date),
                COMPAS_offense_date=ifelse(gap>30,NA,COMPAS_offense_date),
+               #this reassigns the COMPAS_offense_dates which are >30 days from the screening_date to NA 
                COMPAS_offense_date=ymd(COMPAS_offense_date),
                #hand checked these upper 3 lines, this works
                beforeCOMPAS=if_else(offense_date<COMPAS_offense_date,1,0)
@@ -239,13 +241,6 @@ features0<-features0%>%
           rename(p_fail_to_appear_score=type_of_assessment,
                  p_fail_to_appear_raw=raw_score,p_fail_to_appear_decile=decile_score)
 
-
-#nn<-reshape(d,timevar="cat",idvar="sample",direction="wide")
-# compas_flat=compas_scores%>%
-#             # group_by(person_id,screening_date)%>%
-#                 select(person_id,screening_date,raw_score, type_of_assessment)%>%
-#                 dcast(person_id+screening_date~type_of_assessment, value.var="raw_score")    
- 
 rm(propub_failure_scores,propub_recidivism_scores,propub_violence_scores)
 
 ```
@@ -503,18 +498,18 @@ arnold2<-df_beforeCOMPAS%>%
                    prior_conviction_T=if_else(is_traffic==1&convicted==1,1,0),
 
                    violent_conviction=if_else(is_violent==1&convicted==1,1,0))%>%
-            distinct()%>%
-            group_by(person_id)%>%
-              summarise(
-                        prior_conviction_F=sum(prior_conviction_F),
-                        prior_conviction_M=sum(prior_conviction_M),
-                        prior_conviction_T=sum(prior_conviction_T),
-                        violent_conviction=sum(is_violent),
-                         total_convictions=sum(convicted)
-                        )
+            distinct()
+            # group_by(person_id)%>%
+            #   summarise(
+            #             prior_conviction_F=sum(prior_conviction_F),
+            #             prior_conviction_M=sum(prior_conviction_M),
+            #             prior_conviction_T=sum(prior_conviction_T),
+            #             violent_conviction=sum(is_violent),
+            #              total_convictions=sum(convicted)
+            #             )
 
-# checkarn=distinct(arnold2,charge_number,case_number)
-# View(arnold2 %>% mutate(rowid = row_number()) %>% group_by(charge_number,case_number) %>% filter(n()>1) %>% select(rowid))
+checkarn=distinct(arnold2,charge_number,case_number)
+View(arnold2 %>% mutate(rowid = row_number()) %>% group_by(charge_number,case_number) %>% filter(n()>1) %>% select(rowid))
 #Possible issues: for personid 35, he had 2 dispositions (1 amended), person id 1499, disposition vacated
 #Condition: take as convicted unless have a vacated disposition
 # View(head(arnold2,100))
@@ -648,6 +643,8 @@ features<-features0%>%
                    p_jail_visits=jail_visits,p_jail_time=jail_time,p_numcases=numcases,
                    p_misdem_count_person=misdem_count_person,p_misdem_count_5yrs=misdem_count_5yrs,
                    p_drug_count_person=drug_count_person, p_drug_count_5yrs=drug_count_5yrs,
+                   p_traffic_count_person=traffic_count_person,
+                   p_yrs5_trafcount_person=yrs5_trafcount_person,
                    p_current_age=current_age,
                    p_current_violent_offense=current_violent_offense,
                    p_current_violent_twenty=current_violent_twenty,

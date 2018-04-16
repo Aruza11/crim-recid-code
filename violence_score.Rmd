@@ -1,0 +1,157 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Ctrl+Shift+Enter*. 
+
+Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Ctrl+Alt+I*.
+
+When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Ctrl+Shift+K* to preview the HTML file).
+
+```{r}
+library(tidyverse)
+library(magrittr)
+
+# features<-read.csv("features.csv")
+```
+
+
+
+Risk of Violence
+Modelled age with a 4th degree polynomial. See broward_sheriff_data for our efforts to model it with a variety of exponentials (couldn't get it quite right so used a polynomial in the end).
+```{r}
+ggplot(features, aes(x=p_age, y=p_violence_raw)) +
+     geom_point(shape=1)  +
+     ggtitle("Risk of Violence Raw vs Age")
+
+#modeling age with 4th degree polynomial
+# 1E-06x4 - 0.0002x3 + 0.0191x2 - 0.6823x + 5.8592
+# age_poly=function(x){(.00001*x^4)-(0.0002*x^3) +  (0.0191*x^2) - (0.6823*x) +  (5.8592)} #x=age
+# plot(c(18:70),age_poly(c(18:70)))
+
+age_subset=features%>%
+           select(person_id, first, last, p_age, p_violence_raw)%>%
+           filter(p_age>18&p_age<=70)%>%
+           group_by(p_age)%>%
+              arrange(p_violence_raw,.by_group=TRUE)%>%
+              top_n(n=-1,wt=p_violence_raw)
+
+exponential.model <- lm(log(age_subset$p_violence_raw+5)~ age_subset$p_age)
+    #getting equation of model 1
+    # summary(exponential.model)
+    cf=exponential.model%>% #cf stands for coefficients
+       coef()%>%
+       as.vector()
+    exp_reg=function(x){exp(cf[2]*x+cf[1])-5} #x=age
+    
+
+ggplot(features, aes(x=p_age, y=p_violence_raw)) +
+     geom_point(shape=1)  +
+     ggtitle("Regression Line Age vs Violence Score") +
+     stat_function(fun = exp_reg, colour="blue") +  
+     xlim(18,70)
+
+#looking at original
+ggplot(features, aes(x=p_yrs5_felcount_person, y=p_violence_raw)) +
+          geom_point(shape=1)  +
+          ggtitle("Risk of Violence Raw vs Fel5yrs per Person")
+       
+#corrected with polynomial
+poly_5yrfel=features%>%
+              select(person_id, p_age, p_yrs5_felcount_person,p_violence_raw)%>%
+              mutate(score_no_age=p_violence_raw-exp_reg(p_age))
+```
+
+```{r}
+#trying to generate regression line for 5yrfel now 
+ggplot(poly_5yrfel, aes(x=p_yrs5_felcount_person, y=score_no_age)) +
+        geom_point(shape=1)  +
+        ggtitle("Risk of Violence Raw vs 5yrFel per Person, subtracted age polynomial")
+
+corrected_5yrfel=features%>%
+              select(person_id, p_age, p_yrs5_felcount_person,p_violence_raw)%>%
+              mutate(score_no_age=p_violence_raw-exp_reg(p_age))
+
+yrs5_fel_subset=corrected_5yrfel%>%
+                group_by(p_yrs5_felcount_person)%>%
+                arrange(score_no_age,.by_group=TRUE)%>%
+                top_n(n=-1,wt=score_no_age)
+
+fel_linear.model <- lm(yrs5_fel_subset$score_no_age~ yrs5_fel_subset$p_yrs5_felcount_person)
+    #getting equation of model 
+    summary(fel_linear.model)
+    fel_cf=fel_linear.model%>% #cf stands for coefficients
+       coef()%>%
+      
+       as.vector()
+    lin_reg=function(x){fel_cf[2]*x+fel_cf[1]} #x=fel counts
+
+violraw.fel_lin <- predict(fel_linear.model,list(felcount=yrs5_fel_subset$p_yrs5_felcount_person))
+plot(yrs5_fel_subset$p_yrs5_felcount_person, yrs5_fel_subset$score_no_age)
+lines(yrs5_fel_subset$p_yrs5_felcount_person, violraw.fel_lin,lwd=2, col = "blue", xlab = "5yr FelCounts", ylab = "Violence Raw Score")
+
+
+ggplot(corrected_5yrfel, aes(x=p_yrs5_felcount_person, y=score_no_age)) +
+        geom_point(shape=1)  +
+        stat_function(fun = lin_reg, colour="blue") +
+        ggtitle("5yrFel Regression Line vs Violence Score, subtracted age exp_reg")
+
+
+
+
+```
+
+Subtracting out both age and 5yrfel from 5yrmisdem didn't seem to work too well...Try generating a separate regression line for misdem counts 5 yrs? 
+Generating model line for corrected 5_yr misdem (NOT subtracting out fel_score)
+```{r}
+corrected_5yrmisdem=features%>%
+              select(person_id, p_age, p_misdem_count_5yrs,p_violence_raw)%>%
+              filter(p_misdem_count_5yrs<=30)%>%
+              mutate(score_no_age=p_violence_raw-exp_reg(p_age))
+
+ggplot(corrected_5yrmisdem, aes(x=p_misdem_count_5yrs, y=score_no_age)) +
+          geom_point(shape=1)  +
+          ggtitle("Violence Score vs Corrected Misdem5yrs per Person (no age)")
+
+yrs5_misdem_subset=corrected_5yrmisdem%>%
+                group_by(p_misdem_count_5yrs)%>%
+                arrange(score_no_age,.by_group=TRUE)%>%
+                top_n(n=-1,wt=score_no_age)
+
+misdem_linear.model <- lm(yrs5_misdem_subset$score_no_age~ yrs5_misdem_subset$p_misdem_count_5yrs)
+    #getting equation of model 
+    # summary(misdem_linear.model)
+    misdem_cf=misdem_linear.model%>% #cf stands for coefficients
+       coef()%>%
+      
+       as.vector()
+    lin_reg2=function(x){misdem_cf[2]*x+misdem_cf[1]} #x=misdem counts
+
+violraw.misdem_lin <- predict(misdem_linear.model,list(misdemcount=yrs5_misdem_subset$p_misdem_count_5yrs))
+plot(yrs5_misdem_subset$p_misdem_count_5yrs, yrs5_misdem_subset$score_no_age)
+lines(yrs5_misdem_subset$p_misdem_count_5yrs, violraw.misdem_lin,lwd=2, col = "blue", xlab = "5yr MisdemCounts", ylab = "Violence Raw Score")
+
+
+ggplot(corrected_5yrmisdem, aes(x=p_misdem_count_5yrs, y=score_no_age)) +
+        geom_point(shape=1)  +
+        stat_function(fun = lin_reg2, colour="blue") +
+        ggtitle("5yrMisdem Regression Line vs Violence Score, subtracted age exp_reg")
+
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+

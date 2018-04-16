@@ -154,17 +154,17 @@ ggplot(features, aes(x=p_age, y=p_fail_to_appear_raw)) +
 
 ############
 
-ggplot(features, aes(x=p_age, y=violence_decile)) +
-     geom_point(shape=1)  +
-     ggtitle("Risk of Violence Score vs Age")
-
-ggplot(features, aes(x=p_age, y=recid_decile)) +
-     geom_point(shape=1)  +
-     ggtitle("Risk of Recidivism Score vs Age")
-
-ggplot(features, aes(x=p_age, y=fail_to_appear_decile)) +
-     geom_point(shape=1)  +
-     ggtitle("Risk of Failure to Appear Score vs Age")
+# ggplot(features, aes(x=p_age, y=p_violence_decile)) +
+#      geom_point(shape=1)  +
+#      ggtitle("Risk of Violence Score vs Age")
+# 
+# ggplot(features, aes(x=p_age, y=p_recid_decile)) +
+#      geom_point(shape=1)  +
+#      ggtitle("Risk of Recidivism Score vs Age")
+# 
+# ggplot(features, aes(x=p_age, y=p_fail_to_appear_decile)) +
+#      geom_point(shape=1)  +
+#      ggtitle("Risk of Failure to Appear Score vs Age")
 
 
 ```
@@ -178,47 +178,63 @@ age_subset=features%>%
            filter(p_age>18&p_age<=70)%>%
            group_by(p_age)%>%
               arrange(p_violence_raw,.by_group=TRUE)%>%
-              top_n(n=-5,wt=p_violence_raw)
+              top_n(n=-1,wt=p_violence_raw)
 
-# View(age_subset)
-
-# ggplot(age_subset,aes(x=age,y=violence_raw+5)) +
-#       geom_point(shape=1)+
-#       geom_smooth(method="glm",
-#                   method.args=list(family=gaussian(link="log")))
+#comparing logx, logx and logy, original graph
+plot(age_subset$p_age, age_subset$p_violence_raw)
+plot(age_subset$p_age, log(age_subset$p_violence_raw+5))
+plot(log(age_subset$p_age), log(age_subset$p_violence_raw+5))
 
 exponential.model <- lm(log(age_subset$p_violence_raw+5)~ age_subset$p_age)
-    
-    #getting equation of model
+    #getting equation of model 1
     summary(exponential.model)
     cf=exponential.model%>% #cf stands for coefficients
        coef()%>%
        as.vector()
     exp_reg=function(x){exp(cf[2]*x+cf[1])-5} #x=age
-    exp_reg_improved=function(x){exp(-0.0294475*x+1.5340542)-5}
+    exp_reg_manual=function(x){exp(-0.032*x+1.55)-5}
     
     # plot(exp_reg,1,70) #the equation of the exponential regression 
- 
+
+exponential.model2 <- lm(log(age_subset$p_violence_raw+5)~ log(age_subset$p_age)) 
+#applying log to both variables
+    #getting equation of model 2
+    summary(exponential.model2)
+    cf2=exponential.model2%>% #cf stands for coefficients
+       coef()%>%
+       as.vector()
+    exp_reg2=function(x){(x^cf2[2])*(exp(cf2[1]))-5}#x=age
+    
+
 #plotting the regression line on top of age_subset points
-violraw.exponential2 <- exp(predict(exponential.model,list(Age=age_subset$age)))
+violraw.exponential <- exp(predict(exponential.model,list(Age=age_subset$age)))
+violraw.exponential2 <- exp(predict(exponential.model2,list(Age=age_subset$age)))
+
 plot(age_subset$p_age, age_subset$p_violence_raw)
-lines(age_subset$p_age, violraw.exponential2-5,lwd=2, col = "red", xlab = "Age", ylab = "Violence Raw Score")
+lines(age_subset$p_age, violraw.exponential-5,lwd=2, col = "blue", xlab = "Age", ylab = "Violence Raw Score")
+lines(age_subset$p_age, violraw.exponential2-5,lwd=2, col = "green", xlab = "Age", ylab = "Violence Raw Score")
+
 
 #plotting the regression line on top of ALL points
 ggplot(features, aes(x=p_age, y=p_violence_raw)) +
      geom_point(shape=1)  +
      ggtitle("Regression Line Age vs Violence Score") +
-     stat_function(fun = exp_reg, aes(colour="red")) + 
-     stat_function(fun=exp_reg_improved, aes(colour="blue"))
-       # geom_line(aes(colour="blue"))+
-
+     stat_function(fun = exp_reg, colour="blue") +  
+     # stat_function(fun = exp_reg_manual, colour="red")+ 
+     # stat_function(fun = exp_reg2, colour="green") +  
      xlim(18,70)
 
 
 
 ```
 
-Subtracting out variables: according to Sheriff's office, factors are age, total priors, prior failures to appear at scheduled court appearances, history of illegal substance use, mental health, time at previous or prior residences
+```{r}
+# write.csv(select(age_subset, p_age, p_violence_raw),"age_violence_score.csv")
+```
+
+
+
+Subtracting out variables: according to Sheriff's office, factors are age, total priors, prior failures to appear at scheduled court appearances, history of illegal substance use, *mental health, time at previous or prior residences*
 
 Trying to subtract out age from violence score based on regression
 
@@ -229,48 +245,42 @@ exp_reg=function(x){exp(cf[2]*x+cf[1])-5} #x=age
 features$p_age=as.integer(features$p_age)
    
 
-#original plot is w=0
 
-for(w in c(0,.5,1,2,5,10,20)){
-
+for(a in c(48,52,56)){
     no_age=features%>%
               select(person_id, p_age, p_felony_count_person,p_misdem_count_person,p_violence_raw)%>%
-              # filter(p_age>=18&p_age<=20)%>%
-              mutate(age_factor=exp_reg(p_age),
-                    raw_minus_age=p_violence_raw-w*exp_reg(p_age))
+              filter(p_age>=(a-2)&p_age<=(a+2))
     
-      #plot with no age  
-    print(ggplot(no_age, aes(x=p_felony_count_person+p_misdem_count_person, y=raw_minus_age)) +
-          geom_point(shape=1)  +
-          ggtitle(paste0("Risk of Violence Raw vs Felonies per Person (weight",w,")"))
-          )
-}
-
-for(a in c(20,24,28,32,36,40,44)){
-    no_age=features%>%
-              select(person_id, p_age, p_felony_count_person,p_misdem_count_person,p_violence_raw)%>%
-              filter(p_age>=(a-2)&p_age<=(a+2))%>%
-              mutate(age_factor=exp_reg(p_age),
-                    raw_minus_age=p_violence_raw-exp_reg(p_age))
-    print(no_age)
-    print(ggplot(no_age, aes(x=p_felony_count_person+p_misdem_count_person, y=raw_minus_age)) +
+    print(ggplot(no_age, aes(x=p_felony_count_person+p_misdem_count_person, y=p_violence_raw)) +
           geom_point(shape=1)  +
           ggtitle(paste0("Risk of Violence Raw vs Fel+Misd per Person (age range ",a-2,"-",a+2,")"))
           )
 }
 
+
 for(a2 in c(18,20,22,24,26,28,30)){
     no_age=features%>%
               select(person_id, p_age, p_felony_count_person,p_misdem_count_person,p_violence_raw)%>%
-              filter(p_age==a2)%>%
-              mutate(age_factor=exp_reg(p_age),
-                    raw_minus_age=p_violence_raw-exp_reg(p_age))
+              filter(p_age==a2)
     
-    print(ggplot(no_age, aes(x=p_felony_count_person+p_misdem_count_person, y=raw_minus_age)) +
+    print(ggplot(no_age, aes(x=p_felony_count_person+p_misdem_count_person, y=p_violence_raw)) +
           geom_point(shape=1)  +
           ggtitle(paste0("Risk of Violence Raw vs Fel+Misd per Person (age ",a2,")"))
           )
 }
+
+for(n in c(0,5,10,15,20,25,30,35)){
+    n_felmisdem=features%>%
+                filter(p_felony_count_person+p_misdem_count_person>=n&
+                         p_felony_count_person+p_misdem_count_person<n+5)
+    
+    print(ggplot(n_5yrfel, aes(x=p_age, y=p_violence_raw)) +
+              geom_point(shape=1)  +
+              ggtitle(paste0("Risk of Violence Raw by Age, ",n," Fel+Misdem"))
+    )
+          
+}            
+
 
 ```
 
@@ -279,97 +289,514 @@ But it feels like the relationship actually gets less clear when I subtract out 
 *Note: weight 2 actually seems to make the relationship clearer
 ```{r}
 exp_reg=function(x){exp(cf[2]*x+cf[1])-5} #x=age
+ggplot(features, aes(x=p_yrs5_felcount_person, y=p_violence_raw)) +
+          geom_point(shape=1)  +
+          ggtitle("Risk of Violence Raw vs Fel5yrs per Person")
+       
 
-for(w in c(0,.5,1,2,5,10,20)){
-
+for(a in c(48,52,56)){
     no_age=features%>%
               select(person_id, p_age, p_yrs5_felcount_person,p_violence_raw)%>%
-              # filter(p_age>=18&p_age<=20)%>%
-              mutate(age_factor=exp_reg(p_age),
-                    raw_minus_age=p_violence_raw-w*exp_reg(p_age))
+              filter(p_age>=(a-2)&p_age<=(a+2))
     
-      #plot with no age  
-    print(ggplot(no_age, aes(x=p_yrs5_felcount_person, y=raw_minus_age)) +
+    print(ggplot(no_age, aes(x=p_yrs5_felcount_person, y=p_violence_raw)) +
           geom_point(shape=1)  +
-          ggtitle(paste0("Risk of Violence Raw vs Fel5yrs per Person (weight",w,")"))
-          )
-}
-
-for(a in c(20,24,28,32,36,40,44)){
-    no_age=features%>%
-              select(person_id, p_age, p_yrs5_felcount_person,p_violence_raw)%>%
-              filter(p_age>=(a-2)&p_age<=(a+2))%>%
-              mutate(age_factor=exp_reg(p_age),
-                    raw_minus_age=p_violence_raw-exp_reg(p_age))
-    print(no_age)
-    print(ggplot(no_age, aes(x=p_yrs5_felcount_person, y=raw_minus_age)) +
-          geom_point(shape=1)  +
+          xlim(0,10)+
+          ylim(-5,-1)+
           ggtitle(paste0("Risk of Violence Raw vs 5yrFel per Person (age range ",a-2,"-",a+2,")"))
           )
 }
 
-for(a2 in c(18,20,22,24,26,28,30)){
+for(a2 in c(18,19,20,21, 22,24,26,28,30)){
     no_age=features%>%
               select(person_id, p_age, p_yrs5_felcount_person,p_violence_raw)%>%
-              filter(p_age==a2)%>%
-              mutate(age_factor=exp_reg(p_age),
-                    raw_minus_age=p_violence_raw-exp_reg(p_age))
+              filter(p_age==a2)
     
-    print(ggplot(no_age, aes(x=p_yrs5_felcount_person, y=raw_minus_age)) +
+    print(ggplot(no_age, aes(x=p_yrs5_felcount_person, y=p_violence_raw)) +
           geom_point(shape=1)  +
           ggtitle(paste0("Risk of Violence Raw vs 5yrFel per Person (age ",a2,")"))
           )
 }
 
-  
+#Trying to look at the people with 0 5yr felonies and compare their distributions by age. 
+#Viewing effect of correcting  by the age_score below
+for(n in c(0:5)){
+    n_5yrfel=features%>%
+                filter(p_yrs5_felcount_person==n)%>%
+                mutate(score_no_age=p_violence_raw-exp_reg(p_age))
+    
+    print(ggplot(n_5yrfel, aes(x=p_age, y=p_violence_raw)) +
+              geom_point(shape=1)  +
+              ggtitle(paste0("Risk of Violence Raw by Age, ",n," 5yrFel"))+
+              stat_function(fun = exp_reg, aes(colour="red")) 
+
+    )
+    print(ggplot(n_5yrfel, aes(x=p_age, y=score_no_age)) +
+            geom_point(shape=1) +
+            ggtitle(paste0("Risk of Violence Raw by Age, ",n," 5yrFel age subtracted"))
+          )
+}            
+
+#Doing the correction and see if it helps with the graphs "shifting" up and down
+for(a3 in c(18,19,20,21,22,24,26,28,30)){
+    no_age=features%>%
+              select(person_id, p_age, p_yrs5_felcount_person,p_violence_raw)%>%
+              filter(p_age==a3)%>%
+              mutate(score_no_age=p_violence_raw-exp_reg(p_age))
+    
+    print(ggplot(no_age, aes(x=p_yrs5_felcount_person, y=score_no_age)) +
+          geom_point(shape=1)  +
+          ggtitle(paste0("Risk of Violence Raw vs 5yrFel per Person (age ",a2,", subtracted age exp_reg)"))+
+          ylim(0,3)
+          )
+}
+
+#looking at original 
+ggplot(features, aes(x=p_yrs5_felcount_person, y=p_violence_raw)) +
+          geom_point(shape=1)  +
+          ggtitle("Risk of Violence Raw vs Fel5yrs per Person")
+       
+#performing correction with exp_reg and looking at all scores
+corrected_5yrfel=features%>%
+              select(person_id, p_age, p_yrs5_felcount_person,p_violence_raw)%>%
+              mutate(score_no_age=p_violence_raw-exp_reg(p_age))
+    
+ggplot(corrected_5yrfel, aes(x=p_yrs5_felcount_person, y=score_no_age)) +
+        geom_point(shape=1)  +
+        ggtitle("Risk of Violence Raw vs 5yrFel per Person, subtracted age exp_reg")
+
+```
+
+Generating model line for corrected 5_yr fel, subtracting it from violence score as well
+```{r}
+corrected_5yrfel=features%>%
+              select(person_id, p_age, p_yrs5_felcount_person,p_violence_raw)%>%
+              mutate(score_no_age=p_violence_raw-exp_reg(p_age))
+
+yrs5_fel_subset=corrected_5yrfel%>%
+                group_by(p_yrs5_felcount_person)%>%
+                arrange(score_no_age,.by_group=TRUE)%>%
+                top_n(n=-1,wt=score_no_age)
+
+fel_linear.model <- lm(yrs5_fel_subset$score_no_age~ yrs5_fel_subset$p_yrs5_felcount_person)
+    #getting equation of model 
+    summary(fel_linear.model)
+    fel_cf=fel_linear.model%>% #cf stands for coefficients
+       coef()%>%
+      
+       as.vector()
+    lin_reg=function(x){fel_cf[2]*x+fel_cf[1]} #x=fel counts
+
+violraw.fel_lin <- predict(fel_linear.model,list(felcount=yrs5_fel_subset$p_yrs5_felcount_person))
+plot(yrs5_fel_subset$p_yrs5_felcount_person, yrs5_fel_subset$score_no_age)
+lines(yrs5_fel_subset$p_yrs5_felcount_person, violraw.fel_lin,lwd=2, col = "blue", xlab = "5yr FelCounts", ylab = "Violence Raw Score")
+
+
+ggplot(corrected_5yrfel, aes(x=p_yrs5_felcount_person, y=score_no_age)) +
+        geom_point(shape=1)  +
+        stat_function(fun = lin_reg, colour="blue") +
+        ggtitle("5yrFel Regression Line vs Violence Score, subtracted age exp_reg")
+
+
+
+```
+
+
+Subtracting out age, 5yrfel, then graphing 5YrMisdem against violence score 
+```{r}
+ggplot(features, aes(x=p_misdem_count_5yrs, y=p_violence_raw)) +
+          geom_point(shape=1)  +
+          ggtitle("Risk of Violence Raw vs Misdem5yrs per Person")
+
+#age correction only applied
+corrected_5yrmisdem=features%>%
+              select(person_id, p_age, p_yrs5_felcount_person,p_misdem_count_5yrs,p_violence_raw)%>%
+              mutate(score_1=p_violence_raw-exp_reg(p_age))
+
+ggplot(corrected_5yrmisdem, aes(x=p_misdem_count_5yrs, y=score_1)) +
+          geom_point(shape=1)  +
+          ggtitle("Violence Score vs Corrected Misdem5yrs per Person (no age)")
+
+#both corrections applied
+corrected2_5yrmisdem=features%>%
+              select(person_id, p_age, p_yrs5_felcount_person,p_misdem_count_5yrs,p_violence_raw)%>%
+              mutate(score_2=p_violence_raw-exp_reg(p_age)-lin_reg(p_yrs5_felcount_person))
+
+ggplot(corrected2_5yrmisdem, aes(x=p_misdem_count_5yrs, y=score_2)) +
+          geom_point(shape=1)  +
+          ggtitle("Violence Score vs Corrected Misdem5yrs per Person (no age, 5yrfel)")
+
+######################
+#only looking at misdems less than 30
+ggplot(filter(features,p_misdem_count_5yrs<=30), aes(x=p_misdem_count_5yrs, y=p_violence_raw)) +
+          geom_point(shape=1)  +
+          ggtitle("Risk of Violence Raw vs Misdem5yrs per Person (filtered)")
+
+ggplot(corrected_5yrmisdem%>%filter(p_misdem_count_5yrs<=30), aes(x=p_misdem_count_5yrs, y=score_1)) +
+          geom_point(shape=1)  +
+          ggtitle("Violence Score vs Corrected Misdem5yrs per Person (no age,filtered)")
+
+ggplot(corrected2_5yrmisdem%>%filter(p_misdem_count_5yrs<=30), aes(x=p_misdem_count_5yrs, y=score_2)) +
+          geom_point(shape=1)  +
+          ggtitle("Violence Score vs Corrected Misdem5yrs per Person (no age, 5yrfel,filtered)")
+
+######################
+for(a in c(48,52,56)){
+    no_age=features%>%
+              select(person_id, p_age, p_misdem_count_5yrs,p_violence_raw)%>%
+              filter(p_age>=(a-2)&p_age<=(a+2))
+    
+    print(ggplot(no_age, aes(x=p_misdem_count_5yrs, y=p_violence_raw)) +
+          geom_point(shape=1)  +
+          xlim(0,10)+
+          ylim(-5,-1)+
+          ggtitle(paste0("Risk of Violence Raw vs Misdem5yrs per Person (age range ",a-2,"-",a+2,")"))
+          )
+}
+
+for(a2 in c(18,19,20,21, 22,24,26,28,30)){
+    no_age=features%>%
+              select(person_id, p_age, p_misdem_count_5yrs,p_violence_raw)%>%
+              filter(p_age==a2)
+    
+    print(ggplot(no_age, aes(x=p_misdem_count_5yrs, y=p_violence_raw)) +
+          geom_point(shape=1)  +
+          ggtitle(paste0("Risk of Violence Raw vs 5yrMisdem per Person (age ",a2,")"))
+          )
+}
+
+#Trying to look at the people with 0Misdem5yrs and compare their distributions by age. 
+
+for(n in c(0:10)){
+    n_5yrmisdem=features%>%
+                filter(p_misdem_count_5yrs==n)
+    
+    print(ggplot(n_5yrmisdem, aes(x=p_age, y=p_violence_raw)) +
+              geom_point(shape=1)  +
+              ggtitle(paste0("Risk of Violence Raw by Age, ",n," Misdem5yrs"))
+    )
+          
+} 
+
+```
+Subtracting out 2 variables didn't seem to work too well...Try generating a separate regression line for misdem counts 5 yrs? 
+Generating model line for corrected 5_yr misdem (NOT subtracting out fel_score)
+```{r}
+corrected_5yrmisdem=features%>%
+              select(person_id, p_age, p_misdem_count_5yrs,p_violence_raw)%>%
+              filter(p_misdem_count_5yrs<=30)%>%
+              mutate(score_no_age=p_violence_raw-exp_reg(p_age))
+
+ggplot(corrected_5yrmisdem, aes(x=p_misdem_count_5yrs, y=score_no_age)) +
+          geom_point(shape=1)  +
+          ggtitle("Violence Score vs Corrected Misdem5yrs per Person (no age)")
+
+yrs5_misdem_subset=corrected_5yrmisdem%>%
+                group_by(p_misdem_count_5yrs)%>%
+                arrange(score_no_age,.by_group=TRUE)%>%
+                top_n(n=-1,wt=score_no_age)
+
+misdem_linear.model <- lm(yrs5_misdem_subset$score_no_age~ yrs5_misdem_subset$p_misdem_count_5yrs)
+    #getting equation of model 
+    # summary(misdem_linear.model)
+    misdem_cf=misdem_linear.model%>% #cf stands for coefficients
+       coef()%>%
+      
+       as.vector()
+    lin_reg2=function(x){misdem_cf[2]*x+misdem_cf[1]} #x=misdem counts
+
+violraw.misdem_lin <- predict(misdem_linear.model,list(misdemcount=yrs5_misdem_subset$p_misdem_count_5yrs))
+plot(yrs5_misdem_subset$p_misdem_count_5yrs, yrs5_misdem_subset$score_no_age)
+lines(yrs5_misdem_subset$p_misdem_count_5yrs, violraw.misdem_lin,lwd=2, col = "blue", xlab = "5yr MisdemCounts", ylab = "Violence Raw Score")
+
+
+ggplot(corrected_5yrmisdem, aes(x=p_misdem_count_5yrs, y=score_no_age)) +
+        geom_point(shape=1)  +
+        stat_function(fun = lin_reg2, colour="blue") +
+        ggtitle("5yrMisdem Regression Line vs Violence Score, subtracted age exp_reg")
+
+
 
 ```
 
 Checking other variables the Sheriff's office told us were relevant
-Failures to appear: again, weight 2 looks promising. 
+Failures to appear and risk of violence score
 ```{r}
 exp_reg=function(x){exp(cf[2]*x+cf[1])-5} #x=age
 
-for(w in c(0,.5,1,2,5,10,20)){
+#failure to appear
+ggplot(features, aes(x=cq_fail_appear_two_yr, y=p_violence_raw)) +
+     geom_point(shape=1)  +
+     ggtitle("Risk of Violence Raw vs Number Failure to Appear in 2 yrs")
 
-    no_age=features%>%
-              select(person_id, p_age, cq_fail_appear_two_yr,p_violence_raw)%>%
-              # filter(p_age>=18&p_age<=20)%>%
-              mutate(age_factor=exp_reg(p_age),
-                    raw_minus_age=p_violence_raw-w*exp_reg(p_age))
-    
-      #plot with no age  
-    print(ggplot(no_age, aes(x=cq_fail_appear_two_yr, y=raw_minus_age)) +
-          geom_point(shape=1)  +
-          ggtitle(paste0("Risk of Violence Raw vs Fel5yrs per Person (weight",w,")"))
-          )
-}
 
-for(a in c(20,24,28,32,36,40,44)){
+ggplot(features, aes(x=cq_fail_appear_two_plus, y=p_violence_raw)) +
+     geom_point(shape=1)  +
+     ggtitle("Risk of Violence Raw vs Number Failure to Appear in 2yrs+")
+
+ggplot(features, aes(x=cq_fail_appear_two_plus+cq_fail_appear_two_yr, y=p_violence_raw)) +
+     geom_point(shape=1)  +
+     ggtitle("Risk of Violence Raw vs Number Failure to Appear Total")
+
+for(a in c(20,24,28,32,36,40,44,48,52,56)){
     no_age=features%>%
               select(person_id, p_age, cq_fail_appear_two_yr,p_violence_raw)%>%
               filter(p_age>=(a-2)&p_age<=(a+2))%>%
-              mutate(age_factor=exp_reg(p_age),
-                    raw_minus_age=p_violence_raw-exp_reg(p_age))
+              mutate(
+                    raw=p_violence_raw)
     # print(no_age)
-    print(ggplot(no_age, aes(x=cq_fail_appear_two_yr, y=raw_minus_age)) +
+    print(ggplot(no_age, aes(x=cq_fail_appear_two_yr, y=raw)) +
           geom_point(shape=1)  +
-          ggtitle(paste0("Risk of Violence Raw vs 5yrFel per Person (age range ",a-2,"-",a+2,")"))
+          ggtitle(paste0("Risk of Violence Raw vs #Fail_appear_two_yr per Person (age range ",a-2,"-",a+2,")"))
           )
 }
 
-for(a2 in c(18,20,22,24,26,28,30)){
+for(a2 in c(18,19,20,21,22,24,26,28,30,32,34,36,38,42,46,50)){
     no_age=features%>%
               select(person_id, p_age, cq_fail_appear_two_yr,p_violence_raw)%>%
               filter(p_age==a2)%>%
-              mutate(age_factor=exp_reg(p_age),
-                    raw_minus_age=p_violence_raw-exp_reg(p_age))
+              mutate(
+                    raw=p_violence_raw)
     
-    print(ggplot(no_age, aes(x=cq_fail_appear_two_yr, y=raw_minus_age)) +
+    print(ggplot(no_age, aes(x=cq_fail_appear_two_yr, y=raw)) +
           geom_point(shape=1)  +
-          ggtitle(paste0("Risk of Violence Raw vs 5yrFel per Person (age ",a2,")"))
+          ggtitle(paste0("Risk of Violence Raw vs #Fail_appear_two_yr per Person (age ",a2,")"))
           )
 }
+
+```
+
+Seeing if relationship b/w violence score, failure to appear (total) gets clearer if I subtract off all the variable regressions I've calculated, some, only age, etc. 
+Decided to work with total failure to appear b/c the distinction b/w 2 yrs and 2yrs+ was something we did for the Arnold Foundation. 
+Note: exp_reg-age relation
+      lin_reg-5yrfel relation
+      lin_reg2-5yrmisdem relation
+      
+```{r}
+#original  failure to appear vs violence score 
+#within 2 yrs
+ggplot(features, aes(x=cq_fail_appear_two_yr, y=p_violence_raw)) +
+     geom_point(shape=1)  +
+     ggtitle("Risk of Violence Raw vs Number Failure to Appear in 2 yrs")
+
+#2 yrs +
+ggplot(features, aes(x=cq_fail_appear_two_plus, y=p_violence_raw)) +
+     geom_point(shape=1)  +
+     ggtitle("Risk of Violence Raw vs Number Failure to Appear in 2yrs+")
+
+#total
+ggplot(features, aes(x=cq_fail_appear_two_plus+cq_fail_appear_two_yr, y=p_violence_raw)) +
+     geom_point(shape=1)  +
+     ggtitle("Risk of Violence Raw vs Number Failure to Appear Total")
+
+corrected_appear=features%>%
+              select(person_id, p_age, 
+                     p_yrs5_felcount_person,p_misdem_count_5yrs,
+                     cq_fail_appear_two_yr,cq_fail_appear_two_plus,
+                     p_violence_raw)%>%
+              mutate(total_fail_appear=cq_fail_appear_two_plus+cq_fail_appear_two_yr,
+                     score_no_age=p_violence_raw-exp_reg(p_age),
+                     score_no_age2=p_violence_raw-exp_reg(p_age)-lin_reg(p_yrs5_felcount_person),
+                     score_no_age3=p_violence_raw-exp_reg(p_age)-
+                                   lin_reg(p_yrs5_felcount_person)-
+                                   lin_reg2(p_misdem_count_5yrs),
+                     score_no_age4=p_violence_raw-exp_reg(p_age)-
+                                   lin_reg2(p_misdem_count_5yrs)
+                    )
+
+#age correction only
+ggplot(corrected_appear, aes(x=total_fail_appear, y=score_no_age)) +
+     geom_point(shape=1)  +
+     ggtitle("Violence Score vs Number Failure to Appear Total (no age)")
+
+#age+5yr fel correction
+ggplot(corrected_appear, aes(x=total_fail_appear, y=score_no_age2)) +
+     geom_point(shape=1)  +
+     ggtitle("Violence Score vs Number Failure to Appear Total (no age,5yrfel)")
+
+#age+5yr fel +5yr misdem correction
+ggplot(corrected_appear, aes(x=total_fail_appear, y=score_no_age3)) +
+     geom_point(shape=1)  +
+     ggtitle("Violence Score vs Number Failure to Appear Total (no age,5yrfel,5yrmisdem)")
+
+#age+5yrmisdem correction
+ggplot(corrected_appear, aes(x=total_fail_appear, y=score_no_age4)) +
+     geom_point(shape=1)  +
+     ggtitle("Violence Score vs Number Failure to Appear Total (no age,5yrmisdem)")
+
+
+```
+
+Generating failure to appear regression line --again, 
+
+```{r}
+#failure to appear
+ggplot(features, aes(x=cq_fail_appear_two_yr, y=p_violence_raw)) +
+     geom_point(shape=1)  +
+     ggtitle("Risk of Violence Raw vs Number Failure to Appear in 2 yrs")
+
+
+ggplot(features, aes(x=cq_fail_appear_two_plus, y=p_violence_raw)) +
+     geom_point(shape=1)  +
+     ggtitle("Risk of Violence Raw vs Number Failure to Appear in 2yrs+")
+
+ggplot(features, aes(x=cq_fail_appear_two_plus+cq_fail_appear_two_yr, y=p_violence_raw)) +
+     geom_point(shape=1)  +
+     ggtitle("Risk of Violence Raw vs Number Failure to Appear Total")
+
+
+corrected_appear=features%>%
+              select(person_id, p_age, p_misdem_count_5yrs,p_violence_raw,
+                     cq_fail_appear_two_yr,cq_fail_appear_two_plus)%>%
+              mutate(total_fail_appear=cq_fail_appear_two_plus+cq_fail_appear_two_yr,
+                     score_no_age=p_violence_raw-exp_reg(p_age))
+
+ggplot(corrected_appear, aes(x=total_fail_appear, y=score_no_age)) +
+          geom_point(shape=1)  +
+          ggtitle("Violence Score vs Corrected Total Failures to Appear (no age)")
+
+appear_subset=corrected_appear%>%
+                filter(total_fail_appear<=5)%>%
+                group_by(total_fail_appear)%>%
+                arrange(score_no_age,.by_group=TRUE)%>%
+                top_n(n=-1,wt=score_no_age)
+
+appear_linear.model <- lm(appear_subset$score_no_age~ appear_subset$total_fail_appear)
+    #getting equation of model 
+     # summary(appear_linear.model)
+       appear_cf=appear_linear.model%>% #cf stands for coefficients
+       coef()%>%
+       as.vector()
+       
+    lin_reg3=function(x){appear_cf[2]*x+appear_cf[1]} #x=failure to appear counts
+
+violraw.appear_lin <- predict(appear_linear.model,list(appearcount=appear_subset$total_fail_appear))
+plot(appear_subset$total_fail_appear, appear_subset$score_no_age)
+lines(appear_subset$total_fail_appear, violraw.appear_lin,lwd=2, col = "blue", 
+      xlab = "Failure to Appear Counts", ylab = "Violence Raw Score")
+
+
+ggplot(corrected_appear, aes(x=total_fail_appear, y=score_no_age)) +
+        geom_point(shape=1)  +
+        stat_function(fun = lin_reg3, colour="blue") +
+        ggtitle("Failure to Appear Regression Line vs Violence Score, subtracted age exp_reg")
+
+
+```
+
+Performing same sort of analysis on p_drug_count_5yrsNote: exp_reg-age relation
+      lin_reg-5yrfel relation
+      lin_reg2-5yrmisdem relation
+      lin_reg3-total failure to appear relation
+      lin_reg4-5yrDrug relation
+      
+```{r}
+#original  5yrDrug vs violence score 
+ggplot(features, aes(x=p_drug_count_5yrs, y=p_violence_raw)) +
+     geom_point(shape=1)  +
+     ggtitle("Risk of Violence Raw vs 5yrDrug")
+
+corrected_drug=features%>%
+              select(person_id, p_age, 
+                     p_yrs5_felcount_person,p_misdem_count_5yrs,
+                     cq_fail_appear_two_yr,cq_fail_appear_two_plus,
+                     p_drug_count_5yrs,
+                     p_violence_raw)%>%
+              mutate(total_fail_appear=cq_fail_appear_two_plus+cq_fail_appear_two_yr,
+                     score_no_age=p_violence_raw-exp_reg(p_age),
+                     score_no_age2=p_violence_raw-exp_reg(p_age)-
+                                   lin_reg(p_yrs5_felcount_person),
+                     
+                     score_no_age3=p_violence_raw-exp_reg(p_age)-
+                                   lin_reg2(p_misdem_count_5yrs),
+                     
+                     score_no_age4=p_violence_raw-exp_reg(p_age)-
+                                   lin_reg3(total_fail_appear),
+                     
+                     score_no_age5=p_violence_raw-exp_reg(p_age)-
+                                   lin_reg(p_yrs5_felcount_person)-
+                                   lin_reg2(p_misdem_count_5yrs)-
+                                   lin_reg3(total_fail_appear)
+                    )
+
+#age correction only
+ggplot(corrected_drug, aes(x=p_drug_count_5yrs, y=score_no_age)) +
+     geom_point(shape=1)  +
+     ggtitle("Violence Score vs 5yrDrug (no age)")
+
+#age+5yr fel correction
+ggplot(corrected_drug, aes(x=p_drug_count_5yrs, y=score_no_age2)) +
+     geom_point(shape=1)  +
+     ggtitle("Violence Score vs 5yrDrug (no age,5yrfel)")
+
+#age+5yr misdem correction
+ggplot(corrected_drug, aes(x=p_drug_count_5yrs, y=score_no_age3)) +
+     geom_point(shape=1)  +
+     ggtitle("Violence Score vs 5yrDrug (no age,5yrmisdem)")
+
+#age+total failure to appear correction
+ggplot(corrected_drug, aes(x=p_drug_count_5yrs, y=score_no_age4)) +
+     geom_point(shape=1)  +
+     ggtitle("Violence Score vs 5yrDrug (no age,total failure to appear)")
+
+#age+5yr fel +5yr misdem +total failure to appear  correction 
+ggplot(corrected_drug, aes(x=p_drug_count_5yrs, y=score_no_age5)) +
+     geom_point(shape=1)  +
+     ggtitle("Violence Score vs 5yrDrug (no age,5yrfel,5yrmisdem, total failure to appear)")
+
+
+
+```
+
+
+
+Generating 5yrdrug vs age regression line (incorporating 5yrfel, 5yrmisdem, total failure to appear)
+```{r}
+#drug count 5yrs 
+ggplot(features, aes(x=p_drug_count_5yrs, y=p_violence_raw)) +
+     geom_point(shape=1)  +
+     ggtitle("Risk of Violence Raw vs 5yrDrug")
+
+corrected_drug=features%>%
+              select(person_id, p_age, 
+                     p_yrs5_felcount_person,p_misdem_count_5yrs,
+                     cq_fail_appear_two_yr,cq_fail_appear_two_plus,
+                     p_drug_count_5yrs,
+                     p_violence_raw)%>%
+              mutate(total_fail_appear=cq_fail_appear_two_plus+cq_fail_appear_two_yr,
+                     score_no_age=p_violence_raw-exp_reg(p_age)-
+                                   lin_reg(p_yrs5_felcount_person)-
+                                   lin_reg2(p_misdem_count_5yrs)-
+                                   lin_reg3(total_fail_appear)
+                    )
+
+ggplot(corrected_drug, aes(x=p_drug_count_5yrs, y=score_no_age)) +
+          geom_point(shape=1)  +
+          ggtitle("Violence Score vs Corrected 5yrDrug (no age, fel, misdem, failure to appear)")
+
+drug_subset=corrected_drug%>%
+                group_by(p_drug_count_5yrs)%>%
+                arrange(score_no_age,.by_group=TRUE)%>%
+                top_n(n=-1,wt=score_no_age)
+
+drug_linear.model <- lm(drug_subset$score_no_age~ drug_subset$p_drug_count_5yrs)
+     # summary(drug_linear.model)
+       drug_cf=drug_linear.model%>% #cf stands for coefficients
+       coef()%>%
+       as.vector()
+       
+    lin_reg4=function(x){drug_cf[2]*x+drug_cf[1]} #x=failure to appear counts
+
+violraw.drug_lin <- predict(drug_linear.model,list(appearcount=drug_subset$p_drug_count_5yrs))
+plot(drug_subset$p_drug_count_5yrs, drug_subset$score_no_age)
+lines(drug_subset$p_drug_count_5yrs, violraw.drug_lin,lwd=2, col = "blue", 
+      xlab = "5yrDrug Counts", ylab = "Violence Raw Score")
+
+
+ggplot(corrected_drug, aes(x=p_drug_count_5yrs, y=score_no_age)) +
+        geom_point(shape=1)  +
+        stat_function(fun = lin_reg4, colour="blue") +
+        ggtitle("5yrDrug Regression Line vs Violence Score, subtracted age exp_reg")
 
 ```
 
@@ -383,7 +810,7 @@ ggplot(features, aes(x=p_felony_count_person, y=p_violence_raw)) +
      ggtitle("Risk of Violence Raw vs Number Felonies")
 
 
-ggplot(features, aes(x=p_yrs5_felcount_person, y=p_violence_raw)) +
+ggplot(features, aes(x=p_misdem_count_5yrs, y=p_violence_raw)) +
      geom_point(shape=1)  +
      ggtitle("Risk of Violence Raw vs Number Felonies in 5 yrs")
 
@@ -397,12 +824,73 @@ ggplot(features, aes(x=p_misdem_count_5yrs, y=p_violence_raw)) +
      geom_point(shape=1)  +
      ggtitle("Risk of Violence Raw vs Number Misdemeanors in 5 yrs")
 
+#drugs
+ggplot(features, aes(x=p_drug_count_person, y=p_violence_raw)) +
+     geom_point(shape=1)  +
+     ggtitle("Risk of Violence Raw vs Number Drug")
+
+
+ggplot(features, aes(x=p_drug_count_5yrs, y=p_violence_raw)) +
+     geom_point(shape=1)  +
+     ggtitle("Risk of Violence Raw vs Number Drug in 5 yrs")
+
+#failure to appear
+ggplot(features, aes(x=cq_fail_appear_two_yr, y=p_violence_raw)) +
+     geom_point(shape=1)  +
+     ggtitle("Risk of Violence Raw vs Number Failure to Appear in 2 yrs")
+
+
+ggplot(features, aes(x=cq_fail_appear_two_plus, y=p_violence_raw)) +
+     geom_point(shape=1)  +
+     ggtitle("Risk of Violence Raw vs Number Failure to Appear in 2yrs+")
+
+ggplot(features, aes(x=cq_fail_appear_two_plus+cq_fail_appear_two_yr, y=p_violence_raw)) +
+     geom_point(shape=1)  +
+     ggtitle("Risk of Violence Raw vs Number Failure to Appear Total")
+
+
 
 ```
 #min(#misdemeanors, 40)
 
+Looking at failure to appear score
+
+
+```{r}
+ggplot(features, aes(x=p_fail_to_appear_decile, y=p_fail_to_appear_raw)) +
+     geom_point(shape=1)  +
+     ggtitle("Risk of Failure to Appear Raw vs Decile")
+
+ggplot(features, aes(x=p_age, y=p_fail_to_appear_raw)) +
+     geom_point(shape=1)  +
+     ggtitle("Risk of Failure to Appear Raw vs Age")
+
+#Risk of failure to appear  and number of failures to appear in 2 yrs 
+ggplot(features, aes(x=cq_fail_appear_two_yr, y=p_fail_to_appear_raw)) +
+     geom_point(shape=1)  +
+     ggtitle("Risk of Failure to Appear Raw vs #Failure to appear in 2 yrs")
+
+#Risk of failure to appear  and number of failures to appear in 2 yrs plus
+ggplot(features, aes(x=cq_fail_appear_two_plus, y=p_fail_to_appear_raw)) +
+     geom_point(shape=1)  +
+     ggtitle("Risk of Failure to Appear Raw vs #Failure to appear in >2 yrs")
+
+#Risk of failure to appear  and total number of failures to appear 
+ggplot(features, aes(x=cq_fail_appear_two_yr+cq_fail_appear_two_plus, y=p_fail_to_appear_raw)) +
+     geom_point(shape=1)  +
+     ggtitle("Risk of Failure to Appear Raw vs Total# Failure to appear")
+
+#Risk of failure to appear  and total number of failures to appear 
+ggplot(features, aes(x=cq_fail_appear_two_yr+cq_fail_appear_two_plus, y=p_fail_to_appear_decile)) +
+     geom_point(shape=1)  +
+     ggtitle("Risk of Failure to Appear decile vs Total# Failure to appear")
+
+```
+
+
+
 Exploring more relations
-# A tibble: 7 x 1		# A tibble: 2 x 1		# A tibble: 6 x 1
+<!-- # A tibble: 7 x 1		# A tibble: 2 x 1		# A tibble: 6 x 1 -->
      marital_status		     sex		              race
               <chr>		   <chr>		             <chr>
 1            Single		1   Male		      1 Native American
@@ -414,10 +902,8 @@ Exploring more relations
 7          Unknown				
 
 ```{r}
-#Risk of violence and current violent offense 
-ggplot(features, aes(x=p_current_violent_offense, y=p_violence_raw)) +
-     geom_point(shape=1)  +
-     ggtitle("Risk of Violence Raw vs Current Violent Offense")
+
+
 
 #Risk of violence vs race
 ggplot(features, aes(x=p_race, y=p_violence_raw)) +
