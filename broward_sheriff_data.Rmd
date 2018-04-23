@@ -170,14 +170,13 @@ age_subset=features%>%
            select(person_id, first, last, p_current_age, p_violence_raw)%>%
            filter(p_current_age>18&p_current_age<=70)%>%
            group_by(p_current_age)%>%
-              
               arrange(p_violence_raw,.by_group=TRUE)%>%
               top_n(n=-1,wt=p_violence_raw)
 
 #comparing logx, logx and logy, original graph
 plot(age_subset$p_current_age, age_subset$p_violence_raw)
- plot(age_subset$p_current_age, log(age_subset$p_violence_raw+5))
-plot(log(age_subset$p_current_age), log(age_subset$p_violence_raw+5))
+plot(age_subset$p_current_age, log(age_subset$p_violence_raw+5))
+# plot(log(age_subset$p_current_age), log(age_subset$p_violence_raw+5))
 
 exponential.model <- lm(log(age_subset$p_violence_raw+5)~ age_subset$p_current_age)
     #getting equation of model 1
@@ -191,14 +190,12 @@ exponential.model <- lm(log(age_subset$p_violence_raw+5)~ age_subset$p_current_a
 
 # exponential.model2 <- lm(log(age_subset$p_violence_raw+5)~ log(age_subset$p_current_age)) 
 # #applying log to both variables
-#     #getting equation of model 2
 #     summary(exponential.model2)
 #     cf2=exponential.model2%>% #cf stands for coefficients
 #        coef()%>%
 #        as.vector()
 #     exp_reg2=function(x){(x^cf2[2])*(exp(cf2[1]))-5}#x=age
     
-
 #plotting the regression line on top of age_subset points
 violraw.exponential <- exp(predict(exponential.model,list(Age=age_subset$age)))
 # violraw.exponential2 <- exp(predict(exponential.model2,list(Age=age_subset$age)))
@@ -206,7 +203,6 @@ violraw.exponential <- exp(predict(exponential.model,list(Age=age_subset$age)))
 plot(age_subset$p_current_age, age_subset$p_violence_raw)
 lines(age_subset$p_current_age, violraw.exponential-5,lwd=2, col = "blue", xlab = "Age", ylab = "Violence Raw Score")
 # lines(age_subset$p_current_age, violraw.exponential2-5,lwd=2, col = "green", xlab = "Age", ylab = "Violence Raw Score")
-
 
 #plotting the regression line on top of ALL points
 ggplot(features, aes(x=p_current_age, y=p_violence_raw)) +
