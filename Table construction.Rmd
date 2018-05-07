@@ -494,21 +494,23 @@ arnold1<-df_beforeCOMPAS%>%
             distinct(person_id,screening_date,offense_date,dob,statute,prison_in_custody,prison_out_custody)%>%
             mutate(screening_date=ymd_hms(screening_date), 
                   #converting everything to lubridate date class
-                  offense_date=ymd_hms(offense_date),
                   dob=ymd_hms(dob),
                   prison_in_custody=ymd_hms(prison_in_custody),
                   prison_out_custody=ymd_hms(prison_out_custody),
                   
-                  age_at_offense=trunc(as.numeric((screening_date-dob)/365.25)),
+                  age_at_offense=trunc(as.numeric(difftime(
+                    arnold1$offense_date,arnold1$dob,units="days"))/365.25),
+                  age_at_screening=trunc(as.numeric(difftime(
+                    arnold1$screening_date,arnold1$dob,units="days"))/365.25),
                   #round down bc we need people under 18 to count as juveniles
                   twenty_or_less=if_else(age_at_offense<=20,1,0),
                   is_violent=if_else(substr(statute,1,3) %in% c("777","782","784","794","806","812","825","827"),1,0),
                   current_violent_offense=if_else(is_violent==1,1,0),
                   current_violent_twenty=if_else(is_violent==1&twenty_or_less==1,1,0),
-                  
+
                   days_from_compas=as.numeric(screening_date-offense_date,units="days"),
                   is_current=if_else(days_from_compas<30,1,0),
-                  
+
                   prison_time=as.period(prison_out_custody-prison_in_custody,units="days"),
                   in_prison=case_when(is.null(prison_in_custody) ~ NA,
                                       prison_out_custody-prison_in_custody>0 ~ TRUE,
@@ -517,7 +519,7 @@ arnold1<-df_beforeCOMPAS%>%
 #ISSUE: some people have multiple screening dates
             group_by(person_id) %>%
               summarize(age_first_offense=min(age_at_offense),
-                        current_age=max(age_at_offense),
+                        current_age=max(age_at_screening),
                         current_violent_offense=if_else(sum(current_violent_offense)>0,1,0),
                         current_violent_twenty=if_else(sum(current_violent_twenty)>0,1,0),
                         prior_incarceration=if_else(sum(in_prison)>0,1,0)
