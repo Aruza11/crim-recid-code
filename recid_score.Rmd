@@ -136,6 +136,55 @@ ggplot(features, aes(x=p_marital_status, y=p_recid_raw)) +
 
 
 
+```{r}
+age_recid=features%>%
+           select(p_current_age, p_recid_raw)%>%
+           filter(p_current_age>18&p_current_age<=70)%>%
+           group_by(p_current_age)%>%
+              arrange(p_recid_raw,.by_group=TRUE)%>%
+              top_n(n=-1,wt=p_recid_raw)
+# write.csv(age_recid,"age_recid.csv")
+
+ggplot(age_recid, aes(x=p_current_age, y=p_recid_raw)) +
+     geom_point(shape=1)  +
+     ggtitle("Regression Line Age vs Recid Score") +
+     xlim(18,70)
+
+# plot(age_recid$p_current_age, age_recid$p_recid_raw)
+# plot(age_recid$p_current_age, log(age_recid$p_recid_raw+5))
+
+exp.recid <- lm(log(p_recid_raw+5)~ p_current_age,age_recid )
+plot(age_recid$p_current_age, age_recid$p_recid_raw,ylim=c(-5,-1))
+lines(age_recid$p_current_age, exp(predict(exp.recid, age_recid))-5,lwd=2, col = "blue", xlab = "p_current_age", ylab = "Recid Raw Score")
+
+
+recid_features=features%>%
+                    mutate(exp_age=predict(exp.recid, features))
+
+ggplot(recid_features, aes(x=p_current_age, y=p_recid_raw)) +
+     geom_point(shape=1)  +
+     geom_line(aes(x=p_current_age, y=exp_age))+
+     ggtitle("Risk of Recidivism Raw vs Current Age")
+
+
+###
+cf_recid=exp.recid%>% #cf stands for coefficients
+       coef()%>%
+       as.vector()
+    exp_recid_func=function(x){exp(cf[2]*x+cf[1])-5} #x=age
+
+#plotting the regression line on top of ALL points
+ggplot(recid_features, aes(x=p_current_age, y=p_recid_raw)) +
+     geom_point(shape=1)  +
+     ggtitle("Regression Line Age vs Violence Score") +
+     stat_function(fun = exp_recid_func, colour="blue") +  
+     xlim(18,70)
+
+######
+
+
+
+```
 
 
 

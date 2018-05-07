@@ -188,14 +188,7 @@ exponential.model <- lm(log(age_subset$p_violence_raw+5)~ age_subset$p_current_a
     
     plot(exp_reg,1,70) #the equation of the exponential regression
 
-# exponential.model2 <- lm(log(age_subset$p_violence_raw+5)~ log(age_subset$p_current_age)) 
-# #applying log to both variables
-#     summary(exponential.model2)
-#     cf2=exponential.model2%>% #cf stands for coefficients
-#        coef()%>%
-#        as.vector()
-#     exp_reg2=function(x){(x^cf2[2])*(exp(cf2[1]))-5}#x=age
-    
+
 #plotting the regression line on top of age_subset points
 violraw.exponential <- exp(predict(exponential.model,list(Age=age_subset$age)))
 # violraw.exponential2 <- exp(predict(exponential.model2,list(Age=age_subset$age)))

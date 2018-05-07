@@ -244,16 +244,24 @@ ggplot(corrected_drug, aes(x=p_drug_count_5yrs, y=score_no_age)) +
 ```
 
 ```{r}
-data_violence=features%>%
-                select(person_id, p_current_age,cq_fail_appear_two_yr,cq_fail_appear_two_plus,
-                       p_yrs5_felcount_person, p_misdem_count_5yrs,
-                       p_violence_raw,p_drug_count_5yrs,p_yrs5_trafcount_person,
-                       p_prison_visits,p_jail_visits, cq_prior_conviction_F,
-                       cq_prior_conviction_M)%>%
+data_num=features%>%
+                select(person_id,p_violence_raw,p_recid_raw,p_fail_to_appear_raw,
+                       p_current_age,cq_fail_appear_two_yr,cq_fail_appear_two_plus,
+                       p_yrs5_felcount_person, p_felony_count_person,cq_prior_conviction_F,
+                       p_misdem_count_5yrs,p_misdem_count_person,cq_prior_conviction_M,
+                       p_drug_count_5yrs,p_drug_count_person,
+                       p_yrs5_trafcount_person,p_traffic_count_person,prior_conviction_T,
+                       p_current_violent_offense,
+                       p_prison_visits,p_prison_time,
+                       p_jail_visits, p_jail_time,
+                       cq_violent_conviction,
+                       p_marital_status,p_sex,p_race,
+                       p_numcases
+                       )%>%
   
                 mutate(corrected_age=age_poly(p_current_age))
 
-write.csv(data_violence,"data_violence.csv")
+write.csv(data_num,"data_num.csv")
 
 ```
 
