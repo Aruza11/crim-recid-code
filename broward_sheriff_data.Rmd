@@ -204,6 +204,20 @@ ggplot(features, aes(x=p_current_age, y=p_violence_raw)) +
      stat_function(fun = exp_reg, colour="blue") +  
      xlim(18,70)
 
+#plotting current age vs corrected score 
+ggplot(features, aes(x=p_current_age, y=p_violence_raw-exp_reg(p_current_age))) +
+     geom_point(shape=1)  +
+     ggtitle("Risk of Violence Raw (No current age) vs Current Age")
+
+#plotting age_first_offenses vs corrected score
+ggplot(features, aes(x=p_age_first_offense, y=p_violence_raw-exp_reg(p_current_age))) +
+     geom_point(shape=1)  +
+     ggtitle("Risk of Violence Raw vs Age at First Offense, no current age")
+
+#plotting current_age-age_first_offense vs corrected score
+ggplot(features, aes(x=p_current_age-p_age_first_offense, y=p_violence_raw-exp_reg(p_current_age))) +
+     geom_point(shape=1)  +
+     ggtitle("Risk of Violence Raw vs Current Age-Age at First Offense, no current age")
 
 
 ```

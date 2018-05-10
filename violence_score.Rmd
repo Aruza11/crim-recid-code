@@ -54,13 +54,18 @@ ggplot(features, aes(x=p_yrs5_felcount_person, y=p_violence_raw)) +
        
 #corrected with polynomial
 poly_noage=features%>%
-              select(person_id, p_current_age, p_age_first_offense,p_violence_raw)%>%
+              select(person_id, p_current_age, p_age_first_offense,p_age_first_arrest,p_violence_raw)%>%
               mutate(score_no_age=p_violence_raw-age_poly(p_current_age))
 
 
 ```
 
 Score vs age at first offense
+Questions: 
+1) What causes that upturned corner when I plot age of first offense against the score_no_age? It's reminds me of effect of when I plotted the current age against a score corrected with the exponential regression (poorly fitted at low range)
+2) Why is there no explicit effect of p_current_age on the data? 
+3) No algorithmic difference between points which have diff=0 (2 possibilities: 2nd offense within same year as 1st, or this IS their first) and points which are 0<diff<=5
+
 ```{r}
 ggplot(features, aes(x=p_age_first_offense, y=p_violence_raw)) +
      geom_point(shape=1)  +
@@ -68,216 +73,103 @@ ggplot(features, aes(x=p_age_first_offense, y=p_violence_raw)) +
 
 ggplot(poly_noage, aes(x=p_current_age, y=score_no_age)) +
      geom_point(shape=1)  +
-     ggtitle("Risk of Violence Raw vs Age at First Offense, no current age")
+     ggtitle("Risk of Violence Raw (No current age) vs Current Age")
 
 ggplot(poly_noage, aes(x=p_age_first_offense, y=score_no_age)) +
      geom_point(shape=1)  +
      ggtitle("Risk of Violence Raw vs Age at First Offense, no current age")
-
-age_first_offense=features%>%
-           select(person_id, first, last, p_age_first_offense, p_violence_raw)%>%
-           filter(p_age_first_offense>=18&p_age_first_offense<=70)%>%
-           group_by(p_age_first_offense)%>%
-              arrange(p_violence_raw,.by_group=TRUE)%>%
-              top_n(n=-1,wt=p_violence_raw)
-
-exponential.model <- lm(log(age_first_offense$p_violence_raw+5)~ age_first_offense$p_age_first_offense)
-    cf=exponential.model%>% #cf stands for coefficients
-       coef()%>%
-       as.vector()
-    exp_reg=function(x){exp(cf[2]*x+cf[1])-5} #x=age
-    
-ggplot(features, aes(x=p_age_first_offense, y=p_violence_raw)) +
+#checking the relationship b/w DISTANCE b/w ages, and score
+ggplot(poly_noage, aes(x=p_current_age-p_age_first_offense, y=p_violence_raw)) +
      geom_point(shape=1)  +
-     stat_function(fun = exp_reg, colour="blue") +  
-     ggtitle("Risk of Violence Raw vs Age at First Offense+Exp_reg")
-    
+     ggtitle("Risk of Violence Raw vs Current Age-Age at First Offense")
 
-```
+ggplot(poly_noage, aes(x=p_current_age-p_age_first_offense, y=score_no_age)) +
+     geom_point(shape=1)  +
+     ggtitle("Corrected Score vs Current Age-Age at First Offense")
 
+#Checking what happens if I only plot the people with a current-age-age_first_offense of <=5, or if I don't plot them
 
-```{r}
-#trying to generate regression line for 5yrfel now 
-ggplot(poly_5yrfel, aes(x=p_yrs5_felcount_person, y=score_no_age)) +
-        geom_point(shape=1)  +
-        ggtitle("Risk of Violence Raw vs 5yrFel per Person, subtracted age polynomial")
+age_off1_outsubset=features%>%
+                  select(person_id, p_current_age,p_age_first_offense,p_violence_raw)%>%
+                  filter(p_current_age-p_age_first_offense>5)%>%
+                  mutate(score_no_age=p_violence_raw-age_poly(p_current_age))
 
-corrected_5yrfel=features%>%
-              select(person_id, p_current_age, p_yrs5_felcount_person,p_violence_raw)%>%
-              mutate(score_no_age=p_violence_raw-exp_reg(p_current_age))
+small_diff=features%>%
+                  select(person_id, p_current_age,p_age_first_offense,p_violence_raw)%>%
+                  filter(p_current_age-p_age_first_offense<=5&p_current_age-p_age_first_offense>0)%>%
+                  mutate(score_no_age=p_violence_raw-age_poly(p_current_age))
 
-yrs5_fel_subset=corrected_5yrfel%>%
-                group_by(p_yrs5_felcount_person)%>%
-                arrange(score_no_age,.by_group=TRUE)%>%
-                top_n(n=-1,wt=score_no_age)
+ggplot(age_off1_outsubset, aes(x=p_current_age, y=score_no_age)) +
+     geom_point(shape=1)  +
+     ggtitle("Age corrected score vs Age at First Offense, diff>5")
 
-fel_linear.model <- lm(yrs5_fel_subset$score_no_age~ yrs5_fel_subset$p_yrs5_felcount_person)
-    #getting equation of model 
-    summary(fel_linear.model)
-    fel_cf=fel_linear.model%>% #cf stands for coefficients
-       coef()%>%
-      
-       as.vector()
-    lin_reg=function(x){fel_cf[2]*x+fel_cf[1]} #x=fel counts
+ggplot(small_diff, aes(x=p_current_age, y=score_no_age)) +
+     geom_point(shape=1)  +
+     ggtitle("Age corrected score vs Age at First Offense, diff>0 and diff<=5")
 
-violraw.fel_lin <- predict(fel_linear.model,list(felcount=yrs5_fel_subset$p_yrs5_felcount_person))
-plot(yrs5_fel_subset$p_yrs5_felcount_person, yrs5_fel_subset$score_no_age)
-lines(yrs5_fel_subset$p_yrs5_felcount_person, violraw.fel_lin,lwd=2, col = "blue", xlab = "5yr FelCounts", ylab = "Violence Raw Score")
+for (x in c(0:10)){
+  diff=features%>%
+                  select(person_id, p_current_age,p_age_first_offense,p_violence_raw)%>%
+                  filter(p_current_age-p_age_first_offense==x)%>%
+                  mutate(score_no_age=p_violence_raw-age_poly(p_current_age))
 
-
-ggplot(corrected_5yrfel, aes(x=p_yrs5_felcount_person, y=score_no_age)) +
-        geom_point(shape=1)  +
-        stat_function(fun = lin_reg, colour="blue") +
-        ggtitle("5yrFel Regression Line vs Violence Score, subtracted age exp_reg")
-
-
+   print(
+     ggplot(diff, aes(x=p_current_age, y=score_no_age)) +
+     geom_point(shape=1)  +
+     ggtitle(paste0("Score vs Age diff==",x))
+   )
+}
 
 
 ```
 
-Subtracting out both age and 5yrfel from 5yrmisdem didn't seem to work too well...Try generating a separate regression line for misdem counts 5 yrs? 
-Generating model line for corrected 5_yr misdem (NOT subtracting out fel_score)
+Same as above, but with p_age_first_arrest
 ```{r}
-corrected_5yrmisdem=features%>%
-              select(person_id, p_current_age, p_misdem_count_5yrs,p_violence_raw)%>%
-              filter(p_misdem_count_5yrs<=30)%>%
-              mutate(score_no_age=p_violence_raw-exp_reg(p_current_age))
+ggplot(features, aes(x=p_age_first_arrest, y=p_violence_raw)) +
+     geom_point(shape=1)  +
+     ggtitle("Risk of Violence Raw vs Age at First Arrest")
 
-ggplot(corrected_5yrmisdem, aes(x=p_misdem_count_5yrs, y=score_no_age)) +
-          geom_point(shape=1)  +
-          ggtitle("Violence Score vs Corrected Misdem5yrs per Person (no age)")
+ggplot(poly_noage, aes(x=p_current_age, y=score_no_age)) +
+     geom_point(shape=1)  +
+     ggtitle("Risk of Violence Raw (No current age) vs Current Age")
 
-yrs5_misdem_subset=corrected_5yrmisdem%>%
-                group_by(p_misdem_count_5yrs)%>%
-                arrange(score_no_age,.by_group=TRUE)%>%
-                top_n(n=-1,wt=score_no_age)
+ggplot(poly_noage, aes(x=p_age_first_arrest, y=score_no_age)) +
+     geom_point(shape=1)  +
+     ggtitle("Risk of Violence Raw vs Age at First Arrest, no current age")
 
-misdem_linear.model <- lm(yrs5_misdem_subset$score_no_age~ yrs5_misdem_subset$p_misdem_count_5yrs)
-    #getting equation of model 
-    # summary(misdem_linear.model)
-    misdem_cf=misdem_linear.model%>% #cf stands for coefficients
-       coef()%>%
-       as.vector()
-    lin_reg2=function(x){misdem_cf[2]*x+misdem_cf[1]} #x=misdem counts
+#checking the relationship b/w DISTANCE b/w ages, and score
+ggplot(poly_noage, aes(x=p_current_age-p_age_first_arrest, y=p_violence_raw)) +
+     geom_point(shape=1)  +
+     ggtitle("Risk of Violence Raw vs Current Age-Age at First Arrest")
 
-violraw.misdem_lin <- predict(misdem_linear.model,list(misdemcount=yrs5_misdem_subset$p_misdem_count_5yrs))
-plot(yrs5_misdem_subset$p_misdem_count_5yrs, yrs5_misdem_subset$score_no_age)
-lines(yrs5_misdem_subset$p_misdem_count_5yrs, violraw.misdem_lin,lwd=2, col = "blue", xlab = "5yr MisdemCounts", ylab = "Violence Raw Score")
+ggplot(poly_noage, aes(x=p_current_age-p_age_first_arrest, y=score_no_age)) +
+     geom_point(shape=1)  +
+     ggtitle("Corrected Score vs Current Age-Age at First Arrest")
 
+first_arrest_low=features%>%
+                   mutate(score_no_age=p_violence_raw-age_poly(p_current_age))%>%
+                   # filter(p_age_first_arrest<=20)%>%
+                   filter(p_current_age!=p_age_first_arrest)%>%
+                   filter(p_felprop_violarrest==0&p_misdemassault_arrest<=3&p_felassault_arrest==0
+                          &p_murder_arrest==0&p_famviol_arrest==0&p_sex_arrest==0
+                          &p_yrs5_felcount_person<=1&p_misdem_count_5yrs<=3&cq_fail_appear_two_yr<=3)
 
-ggplot(corrected_5yrmisdem, aes(x=p_misdem_count_5yrs, y=score_no_age)) +
-        geom_point(shape=1)  +
-        stat_function(fun = lin_reg2, colour="blue") +
-        ggtitle("5yrMisdem Regression Line vs Violence Score, subtracted age exp_reg")
+ggplot(first_arrest_low, aes(x=p_age_first_arrest, y=p_violence_raw))+
+  geom_point(shape=1)+
+  ggtitle("Raw Score vs p_age_first_arrest, xlim<=20, no age=age@ first arrest")
 
-
-
+ggplot(first_arrest_low, aes(x=p_age_first_arrest, y=score_no_age))+
+  geom_point(shape=1)+
+  ggtitle("Corrected Score vs p_age_first_arrest, xlim<=20, no age=age@ first arrest")
 ```
 
 ```{r}
-ggplot(features, aes(x=cq_fail_appear_two_yr, y=p_violence_raw)) +
-     geom_point(shape=1)  +
-     ggtitle("Risk of Violence Raw vs Number Failure to Appear in 2 yrs")
-
-
-ggplot(features, aes(x=cq_fail_appear_two_plus, y=p_violence_raw)) +
-     geom_point(shape=1)  +
-     ggtitle("Risk of Violence Raw vs Number Failure to Appear in 2yrs+")
-
-ggplot(features, aes(x=cq_fail_appear_two_plus+cq_fail_appear_two_yr, y=p_violence_raw)) +
-     geom_point(shape=1)  +
-     ggtitle("Risk of Violence Raw vs Number Failure to Appear Total")
-
-
-corrected_appear=features%>%
-              select(person_id, p_current_age, p_misdem_count_5yrs,p_violence_raw,
-                     cq_fail_appear_two_yr,cq_fail_appear_two_plus)%>%
-              mutate(total_fail_appear=cq_fail_appear_two_plus+cq_fail_appear_two_yr,
-                     score_no_age=p_violence_raw-exp_reg(p_current_age))
-
-ggplot(corrected_appear, aes(x=total_fail_appear, y=score_no_age)) +
-          geom_point(shape=1)  +
-          ggtitle("Violence Score vs Corrected Total Failures to Appear (no age)")
-
-appear_subset=corrected_appear%>%
-                filter(total_fail_appear<=5)%>%
-                group_by(total_fail_appear)%>%
-                arrange(score_no_age,.by_group=TRUE)%>%
-                top_n(n=-1,wt=score_no_age)
-
-appear_linear.model <- lm(appear_subset$score_no_age~ appear_subset$total_fail_appear)
-     # summary(appear_linear.model)
-       appear_cf=appear_linear.model%>% #cf stands for coefficients
-       coef()%>%
-       as.vector()
-       
-    lin_reg3=function(x){appear_cf[2]*x+appear_cf[1]} #x=failure to appear counts
-
-violraw.appear_lin <- predict(appear_linear.model,list(appearcount=appear_subset$total_fail_appear))
-plot(appear_subset$total_fail_appear, appear_subset$score_no_age)
-lines(appear_subset$total_fail_appear, violraw.appear_lin,lwd=2, col = "blue", 
-      xlab = "Failure to Appear Counts", ylab = "Violence Raw Score")
-
-
-ggplot(corrected_appear, aes(x=total_fail_appear, y=score_no_age)) +
-        geom_point(shape=1)  +
-        stat_function(fun = lin_reg3, colour="blue") +
-        ggtitle("Failure to Appear Regression Line vs Violence Score, subtracted age exp_reg")
+ggplot(features, aes(x=p_yrs5_trafcount_person, y=p_violence_raw-age_poly(p_current_age)))+
+  geom_point(shape=1)+
+  ggtitle("Corrected Score vs 5 Yr Traffic")
 
 ```
 
-```{r}
-#drug count 5yrs 
-ggplot(features, aes(x=p_drug_count_5yrs, y=p_violence_raw)) +
-     geom_point(shape=1)  +
-     ggtitle("Risk of Violence Raw vs 5yrDrug")
-
-corrected_drug=features%>%
-              select(person_id, p_current_age, 
-                     p_yrs5_felcount_person,p_misdem_count_5yrs,
-                     cq_fail_appear_two_yr,cq_fail_appear_two_plus,
-                     p_drug_count_5yrs,
-                     p_violence_raw)%>%
-              mutate(total_fail_appear=cq_fail_appear_two_plus+cq_fail_appear_two_yr,
-                     score_no_age=p_violence_raw-exp_reg(p_current_age),
-                     score_no_age2=p_violence_raw-exp_reg(p_current_age)-
-                                   lin_reg(p_yrs5_felcount_person)-
-                                   lin_reg2(p_misdem_count_5yrs)-
-                                   lin_reg3(total_fail_appear)
-                    )
-ggplot(corrected_drug, aes(x=p_drug_count_5yrs, y=score_no_age)) +
-          geom_point(shape=1)  +
-          ggtitle("Violence Score vs Corrected 5yrDrug (no age)")
-
-ggplot(corrected_drug, aes(x=p_drug_count_5yrs, y=score_no_age2)) +
-          geom_point(shape=1)  +
-          ggtitle("Violence Score vs Corrected 5yrDrug (no age, fel, misdem, failure to appear)")
-
-drug_subset=corrected_drug%>%
-                group_by(p_drug_count_5yrs)%>%
-                arrange(score_no_age,.by_group=TRUE)%>%
-                top_n(n=-1,wt=score_no_age)
-
-drug_linear.model <- lm(drug_subset$score_no_age~ drug_subset$p_drug_count_5yrs)
-     # summary(drug_linear.model)
-       drug_cf=drug_linear.model%>% #cf stands for coefficients
-       coef()%>%
-       as.vector()
-       
-    lin_reg4=function(x){drug_cf[2]*x+drug_cf[1]} #x=5yr drug counts
-
-violraw.drug_lin <- predict(drug_linear.model,list(appearcount=drug_subset$p_drug_count_5yrs))
-plot(drug_subset$p_drug_count_5yrs, drug_subset$score_no_age)
-lines(drug_subset$p_drug_count_5yrs, violraw.drug_lin,lwd=2, col = "blue", 
-      xlab = "5yrDrug Counts", ylab = "Violence Raw Score")
-
-
-ggplot(corrected_drug, aes(x=p_drug_count_5yrs, y=score_no_age)) +
-        geom_point(shape=1)  +
-        stat_function(fun = lin_reg4, colour="blue") +
-        ggtitle("5yrDrug Regression Line vs Violence Score, subtracted age exp_reg")
-
-```
 
 ```{r}
 data_num=features%>%
@@ -308,66 +200,6 @@ With subtracted off age scores
 predicted_COMPAS=features%>%
                   mutate(total_fail_appear=cq_fail_appear_two_yr+cq_fail_appear_two_plus,
                          corrected_age=age_poly(p_current_age),
-                         # pred_violence=age_poly(p_current_age),
-                         # 
-                         # pred_violence2=age_poly(p_current_age)+lin_reg(p_yrs5_felcount_person),
-                         # 
-                         # pred_violence3=age_poly(p_current_age)+lin_reg(p_yrs5_felcount_person)+
-                         #                lin_reg2(p_misdem_count_5yrs),
-                         # 
-                         # pred_violence4=age_poly(p_current_age)+lin_reg(p_yrs5_felcount_person)+
-                         #                lin_reg2(p_misdem_count_5yrs)+lin_reg3(total_fail_appear),
-                         # 
-                         # pred_violence5=age_poly(p_current_age)+lin_reg(p_yrs5_felcount_person)+
-                         #                lin_reg2(p_misdem_count_5yrs)+lin_reg3(total_fail_appear)+
-                         #                lin_reg4(p_drug_count_5yrs)
-                         )
-
-
-# ggplot(predicted_COMPAS, aes(x=p_violence_raw, y=p_violence_raw)) +
-#         geom_point(shape=1)  +
-#         annotate(x=1.5, y=1.5, label=round(cor(predicted_COMPAS$p_violence_raw,
-#                                                predicted_COMPAS$p_violence_raw),2), 
-#                  geom="text")+
-#         ggtitle("Actual Violence Score vs Actual")
-# 
-# ggplot(predicted_COMPAS, aes(x=p_violence_raw, y=pred_violence)) +
-#         geom_point(shape=1)  +
-#         annotate(x=1.5, y=1.5, label=round(cor(predicted_COMPAS$pred_violence,
-#                                                predicted_COMPAS$p_violence_raw),2), 
-#                  geom="text")+
-#         ggtitle("Predicted Violence Score vs Actual (age only)")
-# 
-# ggplot(predicted_COMPAS, aes(x=p_violence_raw, y=pred_violence2)) +
-#         geom_point(shape=1)  +
-#         annotate(x=1.5, y=1.5, label=round(cor(predicted_COMPAS$pred_violence2,
-#                                                predicted_COMPAS$p_violence_raw),2), 
-#                  geom="text")+
-#         ggtitle("Predicted Violence Score vs Actual (age, 5yrFel)")
-# 
-# ggplot(predicted_COMPAS, aes(x=p_violence_raw, y=pred_violence3)) +
-#         geom_point(shape=1)  +
-#         annotate(x=1.5, y=1.5, label=round(cor(predicted_COMPAS$pred_violence3,
-#                                                predicted_COMPAS$p_violence_raw),2), 
-#                  geom="text")+
-        # ggtitle("Predicted Violence Score vs Actual (age, 5yrFel, 5yrMisd)")
-# 
-# ggplot(predicted_COMPAS, aes(x=p_violence_raw, y=pred_violence4)) +
-#         geom_point(shape=1)  +
-#         annotate(x=1.5, y=1.5, label=round(cor(predicted_COMPAS$pred_violence4,
-#                                                predicted_COMPAS$p_violence_raw
-#                                                ),2), 
-#                  geom="text")+
-#         ggtitle("Predicted Violence Score vs Actual (age, 5yrFel, 5yrMisd, Total Fail Appear)")
-# 
-# 
-# ggplot(predicted_COMPAS, aes(x=p_violence_raw, y=pred_violence5)) +
-#         geom_point(shape=1)  +
-#         annotate(x=1.5, y=1.5, label=round(cor(predicted_COMPAS$pred_violence5,
-#                                                predicted_COMPAS$p_violence_raw),2), 
-#                  geom="text")+
-#         ggtitle("Predicted Violence Score vs Actual (age, 5yrFel, 5yrMisd, Total Fail Appear, 5yrDrug)")
-
 
 ```
 #################################3
@@ -391,30 +223,31 @@ total_linear.model <- lm(p_violence_raw~
 
 total_linear.model2 <- lm(p_violence_raw~ 
                               corrected_age+
+                              corrected_age-p_age_first_offense+
+                              p_felprop_violarrest+
+                              p_juv_fel_count+
+                              p_felassault_arrest+
+                              p_misdemassault_arrest+
+                              p_murder_arrest+
+                              p_famviol_arrest+
+                              p_sex_arrest+
+                              p_weapons_arrest+
+                              total_fail_appear, 
+                         predicted_COMPAS)
+
+total_linear.model3 <- lm(p_violence_raw~ 
+                              corrected_age+
                               p_drug_count_5yrs+
                               p_yrs5_felcount_person+
                               p_misdem_count_5yrs+
                               total_fail_appear, 
                          predicted_COMPAS)
 
-# total_linear.model2 <- lm(p_violence_raw~ 
-#                               corrected_age+
-#                               corrected_age_off1+
-#                               p_drug_count_5yrs+
-#                               p_yrs5_felcount_person+
-#                               p_misdem_count_5yrs+
-#                               total_fail_appear+
-#                               p_yrs5_trafcount_person+
-#                               p_prison_visits+
-#                               p_jail_visits+
-#                               cq_prior_conviction_F+
-#                               cq_prior_conviction_M, 
-#                           predicted_COMPAS)
-
 predicted_COMPAS=predicted_COMPAS%>%
                     mutate(lin_reg_total=predict(total_linear.model,.),
                            
-                           lin_reg_total2=predict(total_linear.model2,.)
+                           lin_reg_total2=predict(total_linear.model2,.),
+                           lin_reg_total3=predict(total_linear.model3,.)
                     )
 
 
@@ -433,8 +266,15 @@ ggplot(predicted_COMPAS, aes(x=p_violence_raw, y=lin_reg_total2)) +
                                                predicted_COMPAS$p_violence_raw
                                                ),2), 
                  geom="text")+
-        ggtitle("Predicted Violence Score vs Actual V2 (Old)")
+        ggtitle("Predicted Violence Score vs Actual V2 (With difference)")
 
+ggplot(predicted_COMPAS, aes(x=p_violence_raw, y=lin_reg_total3)) +
+        geom_point(shape=1)  +
+        annotate(x=1.5, y=1.5, label=round(cor(predicted_COMPAS$lin_reg_total,
+                                               predicted_COMPAS$p_violence_raw
+                                               ),2), 
+                 geom="text")+
+        ggtitle("Predicted Violence Score vs Actual V3 (Old)")
 
 
 ```
