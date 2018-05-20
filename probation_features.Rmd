@@ -1,0 +1,39 @@
+---
+title: "Probation Features"
+output: html_notebook
+---
+
+```{r}
+setwd("../our_data/")
+eventsdescrp_df<-read.csv("eventsdescrp_df1.csv")%>%
+                    bind_rows(.,read.csv("eventsdescrp_df2.csv"))%>%
+                    bind_rows(.,read.csv("eventsdescrp_df3.csv"))%>%
+                    bind_rows(.,read.csv("eventsdescrp_df4.csv"))
+```
+
+```{r}
+event_uid = eventsdescrp_df %>%
+  filter(Description == "File Order Of Probation") %>%
+  distinct(person_id, case_num, EventDate) %>%
+  mutate(uid = row_number(), 
+         Description = "File Order Of Probation")
+
+eventsdescrp_df2 = left_join(eventsdescrp_df, event_uid, by = c("person_id" = "person_id", 
+                                             "case_num" = "case_num",
+                                             "EventDate" = "EventDate",
+                                             "Description" = "Description"))
+```
+
+```{r}
+eventsdescrp_df3 = eventsdescrp_df2 %>%
+  mutate(uid = na.locf(uid))
+```
+
+
+```{r}
+eventsdescrp_df3 = eventsdescrp_df2 %>%
+  group_by(person_id) %>%
+  arrange(EventDate) %>%
+  mutate(uid = na.locf(uid))
+```
+
