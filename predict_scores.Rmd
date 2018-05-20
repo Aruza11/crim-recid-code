@@ -98,17 +98,27 @@ md = xgb.train(data=train_violent_xgb,
                params=list(param_df[i_param_best,])[[1]], 
                nrounds=performance$iter[i_param_best], 
                nthread=6)
+```
 
 
+```{r}
 ## Plot predictions
 pred = predict(md, newdata=train_violent_xgb)
+actual = train_violent$p_violence_raw
 
-rmse = sqrt(mean((pred - train_violent$p_violence_raw)^2))
+rmse = sqrt(mean((pred - actual)^2))
 
-plot(train_violent$p_violence_raw, pred,
+axis_min = min(min(pred),min(actual))
+axis_max = max(max(pred),max(actual))
+
+par(pty="s")
+plot(actual, pred,
      xlab="Raw Violence Score",
      ylab="Prediction",
-     main=paste("RMSE:",round(rmse,2)))
+     main=paste("RMSE:",round(rmse,2)),
+     xlim=c(axis_min,axis_max),
+     ylim=c(axis_min,axis_max))
+abline(a=0,b=1,col='red')
 ```
 
 ```{r}
