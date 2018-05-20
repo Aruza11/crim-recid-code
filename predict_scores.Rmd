@@ -25,7 +25,9 @@ feat = read_csv("features.csv")
 
 ## Select features and round count features
 train_violent = feat %>%
-  transmute(p_juv_fel_count = pmin(p_juv_fel_count,2),
+  transmute(p_age,
+            p_age_first_offense,
+            p_juv_fel_count = pmin(p_juv_fel_count,2),
             p_felprop_violarrest = pmin(p_felprop_violarrest,5),
             p_murder_arrest = pmin(p_murder_arrest,3),
             p_felassault_arrest = pmin(p_felassault_arrest,3),
@@ -109,4 +111,9 @@ plot(train_violent$p_violence_raw, pred,
      main=paste("RMSE:",round(rmse,2)))
 ```
 
+```{r}
+### Variable importance
+importance_matrix <- xgb.importance(model = md)
+xgb.plot.importance(importance_matrix = importance_matrix)
+```
 
