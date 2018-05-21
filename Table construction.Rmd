@@ -566,11 +566,7 @@ PSA Features: Convictions
 .	Prior misdemeanor convictions 
 .	Prior felony convictions 
 .	Prior violent convictions
-.	Pending charge at time of offense (pending: at time of offense, had another charge for which no disposition was yet reached)
-     *strategy: append date charge filed to each charge, see if any charge falls into the interval, (Offfense_date/date_charge_filed, Judgement_date.)* 
-     *Comment: Use police charge date as beginning date for "pending" b/c charges are considered pending until the State officially charges somebody, and charges are still considered pending after that, until a disposition is reached
-     *A lawsuit is said to be pending from its inception until the issuance of a final judgment by a court. The phrase pending appeal refers to the time before an appeal is taken, as well as to the period during which an appeal is in progress.*
-* Total number priors ( 
+* Total number priors 
 
 
 
@@ -578,9 +574,10 @@ PSA Features: Convictions
 convictions_subset<-convictions%>%
                       select(person_id, case_number,Charge,convicted,JudgementDate)%>%  
                       rename(charge_number=Charge)%>%
-                      mutate(JudgementDate=ymd(JudgementDate))%>%
+                      mutate(JudgementDate=ymd(JudgementDate,tz="UTC"))%>%
                       group_by(case_number,charge_number)%>%
                        filter(JudgementDate==max(JudgementDate))
+convictions_subset$case_number=as.character(convictions_subset$case_number)
 
 #want the latest disposition per case; some cases/charges have more than one disposition
 
@@ -659,6 +656,30 @@ rm(distinct_fta_prob)
 
 ```
 
+PSA Features: pending charge
+.	Pending charge at time of offense (pending: at time of offense, had another charge for which no disposition was yet reached)
+     *strategy: append date charge filed to each charge, see if any charge falls into the interval, (Offfense_date/date_charge_filed, Judgement_date.)* 
+     *idea: generate table with a list of Interval objects, unique to each person
+     *Comment: Use police charge date as beginning date for "pending" b/c charges are considered pending until the State officially charges somebody, and charges are still considered pending after that, until a disposition is reached
+     *A lawsuit is said to be pending from its inception until the issuance of a final judgment by a court. The phrase pending appeal refers to the time before an appeal is taken, as well as to the period during which an appeal is in progress.*
+     
+     MUST FFIX 2 SCREENING DATES ISSUE
+```{r}
+#Need: offense date, judgement date for each charge
+#mdy("8-15-2008") %within% int
+# int=interval(start=mdy("8-15-1998",tz="UTC"), end=mdy("8-15-2018",tz="UTC"))
+
+offense_interval=df_beforeCOMPAS%>%
+                 distinct(person_id,case_number,charge_number,charge_degree,offense_date)%>%
+  
+                 left_join(convictions_subset, by=c("person_id","case_number","charge_number"))%>%
+                  
+                 mutate(interval=interval(start=offense_date,end=JudgementDate))%>%
+                 group_by(person_id)%>%
+                    summarise(offense_intervals=list(interval))
+                        
+```
+
 
 Calculating recidivation from the dfnew entries after the COMPAS score was calculated. 
 ProPublica/Northpointe's def: 
@@ -681,7 +702,7 @@ df_afterCOMPAS only has those cases which have offense_dates after the COMPAS sc
 *later charged with crime that occurred prior to COMPAS screening*: accounted for by the fact that I'm filtering by offense_date, not charge_date.
 *new arrest within two years*: offense_date-screening_date<=2
 
-Corrections to make: for the in-jail criteria, must correct it to accountf or NAs in prison
+Corrections to make: for the in-jail criteria, must correct it to account for NAs in prison
 
 ```{r}
 recid<-df_afterCOMPAS%>%
@@ -725,7 +746,7 @@ recid<-df_afterCOMPAS%>%
 Merged all features tables together(static, dynamic, arnold)
 Column names with p_ come from the 6 propublica tables, column names with cq_ before come from the Broward Clerk's data we queried.  
 ```{r}
-
+age_poly_violence=function(x){0.00000126145944912785*x^4 - 0.00023448446315780700*x^3 + 0.01660174356697860000*x^2 - 0.56651100033213000000*x + 4.13182477973007000000}
 features<-features0%>%
             left_join(dynamic_fel,by=NULL)%>%
             left_join(dynamic_incarceration,by=NULL)%>%
@@ -766,71 +787,70 @@ features<-features0%>%
                    p_age_first_arrest=age_first_arrest
                    ) %>%
            #calculating arnold psa scores 
-           mutate(#failure to appear weighted features 
-                  #pending_charge_fta=if_else(pending_charge>0,1,0),
-                  prior_conviction_fta=if_else(cq_total_convictions>0,1,0),
-                  fta_pretrial2yr_fta=case_when(cq_fail_appear_two_yr==0~0,
-                                                cq_fail_appear_two_yr==1~2,
-                                                cq_fail_appear_two_yr>=2~4),
-                  fta_pretrial2plus_fta=if_else(cq_fail_appear_two_plus>0,1,0), 
-                  
-                  #new criminal activity weighted features
-                  current_age_nca=if_else(p_current_age>=23,0,2),
-                  #pending_charge_nca=if_else(pending_charge>0,3,0),
-                  prior_convM_nca=if_else(cq_prior_conviction_M>0,1,0),
-                  prior_convF_nca=if_else(cq_prior_conviction_F>0,1,0),
-                  prior_convVIO_nca=case_when(cq_violent_conviction==0~0,
-                                              cq_violent_conviction==1~1,
-                                              cq_violent_conviction==2~1,
-                                              cq_violent_conviction>=3~2),
-                  fta_pretrial2yr_nca=case_when(cq_fail_appear_two_yr==0~0,
-                                                cq_fail_appear_two_yr==1~1,
-                                                cq_fail_appear_two_yr>=2~2),
-                  prior_incarceration_nca=if_else(p_prior_incarceration>0,2,0),
-                  
-                  #new violent criminal activity weighted features 
-                  current_violent_nvca=if_else(p_current_violent_offense>0,2,0),
-                  current_violent20_nvca=if_else(p_current_violent_twenty>0,1,0),
-                  # pending_charge_nvca=if_else(pending_charge>0,1,0),
-                  prior_conviction_nvca=if_else(cq_total_convictions>0,1,0),
-                  prior_convVIO_nvca=case_when(cq_violent_conviction==0~0,
-                                               cq_violent_conviction==1~1,
-                                               cq_violent_conviction==2~1,
-                                               cq_violent_conviction>=3~2),
-                  
-                 #failure to appear 
-                  arnold_fta_raw=pending_charge_fta+prior_conviction_fta+
-                                fta_pretrial2yr_fta+fta_pretrial2plus_fta,
-                  arnold_fta=case_when(arnold_fta_raw<=3~arnold_fta_raw+1,
-                                       arnold_fta_raw==4|arnold_fta_raw==5~arnold_fta_raw,
-                                       arnold_fta_raw>=6~arnold_fta_raw-1),
-                 #new violent criminal activity
-                  arnold_nca_raw=current_age_nca+pending_charge_nca+prior_convM_nca+
-                                 prior_convF_nca+prior_convVIO_nca+fta_pretrial2yr_nca+
-                                 prior_incarceration_nca, 
-                  arnold_nca=case_when(arnold_nca_raw<=1~arnold_nca_raw+1,
-                                       arnold_nca_raw==2|arnold_nca_raw==3~arnold_nca_raw,
-                                       arnold_nca_raw==4|arnold_nca_raw==5~arnold_nca_raw-1,
-                                       arnold_nca_raw==6|arnold_nca_raw==7~arnold_nca_raw-2,
-                                       arnold_nca_raw==8~arnold_nca_raw-3,
-                                       arnold_nca_raw>=9~6),
-                 #new criminal activity
-                  arnold_nvca_raw=current_violent_nvca+current_violent20_nvca+pending_charge_nvca+
-                                  prior_conviction_nvca+prior_convVIO_nvca,
-                  arnol_nvca=case_when(arnold_nvca_raw<=3~"No",
-                                       arnold_nvca_raw>3~"Yes")
-              )%>%
-          subset(select=-c(arnold_fta_raw,pending_charge_fta,prior_conviction_fta,
-                                 fta_pretrial2yr_fta,fta_pretrial2plus_fta,
-                           arnold_nca_raw,current_age_nca,pending_charge_nca,prior_convM_nca,
-                                 prior_convF_nca,prior_convVIO_nca,fta_pretrial2yr_nca,
-                                 prior_incarceration_nca,
-                           arnold_nvca_raw,current_age_nca,pending_charge_nca,
-                                 prior_convM_nca,prior_convF_nca,prior_convVIO_nca,
-                                 fta_pretrial2yr_nca,prior_incarceration_nca)
-                 )
-
-
+           mutate(p_vio_noage=p_violence_raw-age_poly_violence(p_current_age))
+          #  mutate(#failure to appear weighted features 
+          #         #pending_charge_fta=if_else(pending_charge>0,1,0),
+          #         prior_conviction_fta=if_else(cq_total_convictions>0,1,0),
+          #         fta_pretrial2yr_fta=case_when(cq_fail_appear_two_yr==0~0,
+          #                                       cq_fail_appear_two_yr==1~2,
+          #                                       cq_fail_appear_two_yr>=2~4),
+          #         fta_pretrial2plus_fta=if_else(cq_fail_appear_two_plus>0,1,0), 
+          #         
+          #         #new criminal activity weighted features
+          #         current_age_nca=if_else(p_current_age>=23,0,2),
+          #         #pending_charge_nca=if_else(pending_charge>0,3,0),
+          #         prior_convM_nca=if_else(cq_prior_conviction_M>0,1,0),
+          #         prior_convF_nca=if_else(cq_prior_conviction_F>0,1,0),
+          #         prior_convVIO_nca=case_when(cq_violent_conviction==0~0,
+          #                                     cq_violent_conviction==1~1,
+          #                                     cq_violent_conviction==2~1,
+          #                                     cq_violent_conviction>=3~2),
+          #         fta_pretrial2yr_nca=case_when(cq_fail_appear_two_yr==0~0,
+          #                                       cq_fail_appear_two_yr==1~1,
+          #                                       cq_fail_appear_two_yr>=2~2),
+          #         prior_incarceration_nca=if_else(p_prior_incarceration>0,2,0),
+          #         
+          #         #new violent criminal activity weighted features 
+          #         current_violent_nvca=if_else(p_current_violent_offense>0,2,0),
+          #         current_violent20_nvca=if_else(p_current_violent_twenty>0,1,0),
+          #         # pending_charge_nvca=if_else(pending_charge>0,1,0),
+          #         prior_conviction_nvca=if_else(cq_total_convictions>0,1,0),
+          #         prior_convVIO_nvca=case_when(cq_violent_conviction==0~0,
+          #                                      cq_violent_conviction==1~1,
+          #                                      cq_violent_conviction==2~1,
+          #                                      cq_violent_conviction>=3~2),
+          #         
+          #        #failure to appear 
+          #         arnold_fta_raw=pending_charge_fta+prior_conviction_fta+
+          #                       fta_pretrial2yr_fta+fta_pretrial2plus_fta,
+          #         arnold_fta=case_when(arnold_fta_raw<=3~arnold_fta_raw+1,
+          #                              arnold_fta_raw==4|arnold_fta_raw==5~arnold_fta_raw,
+          #                              arnold_fta_raw>=6~arnold_fta_raw-1),
+          #        #new violent criminal activity
+          #         arnold_nca_raw=current_age_nca+pending_charge_nca+prior_convM_nca+
+          #                        prior_convF_nca+prior_convVIO_nca+fta_pretrial2yr_nca+
+          #                        prior_incarceration_nca, 
+          #         arnold_nca=case_when(arnold_nca_raw<=1~arnold_nca_raw+1,
+          #                              arnold_nca_raw==2|arnold_nca_raw==3~arnold_nca_raw,
+          #                              arnold_nca_raw==4|arnold_nca_raw==5~arnold_nca_raw-1,
+          #                              arnold_nca_raw==6|arnold_nca_raw==7~arnold_nca_raw-2,
+          #                              arnold_nca_raw==8~arnold_nca_raw-3,
+          #                              arnold_nca_raw>=9~6),
+          #        #new criminal activity
+          #         arnold_nvca_raw=current_violent_nvca+current_violent20_nvca+pending_charge_nvca+
+          #                         prior_conviction_nvca+prior_convVIO_nvca,
+          #         arnol_nvca=case_when(arnold_nvca_raw<=3~"No",
+          #                              arnold_nvca_raw>3~"Yes")
+          #     )%>%
+          # subset(select=-c(arnold_fta_raw,pending_charge_fta,prior_conviction_fta,
+          #                        fta_pretrial2yr_fta,fta_pretrial2plus_fta,
+          #                  arnold_nca_raw,current_age_nca,pending_charge_nca,prior_convM_nca,
+          #                        prior_convF_nca,prior_convVIO_nca,fta_pretrial2yr_nca,
+          #                        prior_incarceration_nca,
+          #                  arnold_nvca_raw,current_age_nca,pending_charge_nca,
+          #                        prior_convM_nca,prior_convF_nca,prior_convVIO_nca,
+          #                        fta_pretrial2yr_nca,prior_incarceration_nca)
+          #        )
 
 ```
 
