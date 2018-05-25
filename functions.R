@@ -1,3 +1,52 @@
+
+compute_features = function(person_id,screening_date,first_offense_date,current_offense_date,charge,jail,people) {
+  ### Computes features (e.g., number of priors) for each person_id/screening_date.
+  
+  # pmap coerces dates to numbers so convert back to date.
+  first_offense_date = as_date(first_offense_date)
+  screening_date = as_date(screening_date)
+  current_offense_date = as_date(current_offense_date) 
+  
+  out = list()
+  
+  # ID information
+  out$person_id = person_id
+  out$screening_date = screening_date
+  
+  #p_current_age: Age at screening date
+  out$p_current_age = floor(as.numeric(as.period(interval(people$dob,screening_date)), "years"))
+  
+  #p_age_first_offense: Age at first offense 
+  out$p_age_first_offense = floor(as.numeric(as.period(interval(people$dob,first_offense_date)), "years"))
+  
+  #p_juv_fel_count
+  out$p_juv_fel_count = ifelse(is.null(people), 0, people$juv_fel_count)
+  
+  #p_felprop_violarrest
+  out$p_felprop_violarrest = ifelse(is.null(charge), 0,sum(charge$is_felprop_violarrest, na.rm = TRUE))
+  
+  #p_murder_arrest
+  out$p_murder_arrest = ifelse(is.null(charge), 0, sum(charge$is_murder, na.rm = TRUE))
+  
+  #p_felassault_arrest
+  out$p_felassault_arrest = ifelse(is.null(charge), 0, sum(charge$is_felassault_arrest, na.rm = TRUE))
+  
+  #p_misdemassault_arrest
+  out$p_misdemassault_arrest = ifelse(is.null(charge), 0, sum(charge$is_misdemassault_arrest, na.rm = TRUE))
+  
+  #p_famviol_arrest
+  out$p_famviol_arrest = ifelse(is.null(charge), 0, sum(charge$is_family_violence, na.rm = TRUE))
+  
+  #p_sex_arrest
+  out$p_sex_arrest = ifelse(is.null(charge), 0, sum(charge$is_sex_offense, na.rm = TRUE))
+  
+  #p_weapons_arrest
+  out$p_weapons_arrest =  ifelse(is.null(charge), 0, sum(charge$is_weapons, na.rm = TRUE))
+  
+  return(out)
+}
+
+
 compare_cols <- function(df) {
   # Fraction of non-missing rows that agree
   

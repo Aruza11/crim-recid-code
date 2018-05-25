@@ -183,13 +183,13 @@ features = pmap_dfr(features_input, .f=compute_features)
 
 ```{r}
 ### Join with COMPAS scores=
-features_all = key_events %>%
+features = key_events %>%
   inner_join(features, by=c("person_id","screening_date")) %>%
   inner_join(compas_df_wide, by=c("person_id","screening_date"))
 ```
 
 ```{r}
-write_csv(features_all, "features_vB.csv")
+write_csv(features, "features_vB.csv")
 ```
 
 
