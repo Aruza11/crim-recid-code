@@ -1,5 +1,47 @@
+compute_outcomes = function(person_id,screening_date,first_offense_date,current_offense_date,
+                            arrest,charge,jail,prison,prob,people){
+  
+  out = list()
+  
+  # pmap coerces dates to numbers so convert back to date.
+  first_offense_date = as_date(first_offense_date)
+  screening_date = as_date(screening_date)
+  current_offense_date = as_date(current_offense_date)
+  
+  ### ID information
+  out$person_id = person_id
+  out$screening_date = screening_date
+  
+  if(is.null(charge)) {
+    out$recid = 0
+    out$recid_violent = 0
+    
+  } else {
+    
+    # Sort charges in ascending order
+    charge = charge %>% dplyr::arrange(offense_date)
+    
+    # General recidivism
+    date_next_offense = charge$offense_date[1]
+    years_next_offense = as.numeric(as.period(interval(screening_date,date_next_offense)), "years")
+    out$recid = if_else(years_next_offense <= 2, 1, 0)
+    
+    # Violent recidivism
+    date_next_offense_violent = filter(charge,is_violent==1)$offense_date[1]
+    if(is.na(date_next_offense_violent)) {
+      out$recid_violent = 0
+    } else {
+      years_next_offense_violent = as.numeric(as.period(interval(screening_date,date_next_offense_violent)), "years")
+      out$recid_violent = if_else(years_next_offense_violent <= 2, 1, 0)
+    }
+  }
+  
+  return(out)
+}
 
-compute_features = function(person_id,screening_date,first_offense_date,current_offense_date,charge,jail,people) {
+
+compute_features = function(person_id,screening_date,first_offense_date,current_offense_date,
+                            arrest,charge,jail,prison,prob,people) {
   ### Computes features (e.g., number of priors) for each person_id/screening_date.
   
   # pmap coerces dates to numbers so convert back to date.
@@ -9,9 +51,20 @@ compute_features = function(person_id,screening_date,first_offense_date,current_
   
   out = list()
   
-  # ID information
+  ### ID information
   out$person_id = person_id
   out$screening_date = screening_date
+  
+  ### Other features
+  
+  # Number of felonies
+  out$p_felony_count_person = ifelse(is.null(charge), 0, sum(charge$is_felony, na.rm = TRUE))
+  
+  # Number of misdemeanors
+  out$p_misdem_count_person  = ifelse(is.null(charge), 0, sum(charge$is_misdem, na.rm = TRUE))
+  
+  
+  ### History of Violence
   
   #p_current_age: Age at screening date
   out$p_current_age = floor(as.numeric(as.period(interval(people$dob,screening_date)), "years"))
@@ -43,8 +96,94 @@ compute_features = function(person_id,screening_date,first_offense_date,current_
   #p_weapons_arrest
   out$p_weapons_arrest =  ifelse(is.null(charge), 0, sum(charge$is_weapons, na.rm = TRUE))
   
+  ### History of Non-Compliance
+  
+  # Number of offenses while on probation
+  out$p_n_on_probation = ifelse(is.null(charge) | is.null(prob), 0, count_on_probation(charge,prob))
+  
+  # Whether or not current offense was while on probation
+  out$p_current_on_probation = ifelse(is.null(prob), 0, count_on_probation(data.frame(offense_date=current_offense_date),prob))
+  
+  # Number of times provation was violated or revoked
+  out$p_prob_revoke =  ifelse(is.null(prob), 0, sum(prob$Description=="File Order Of Revocation Of Probation"))
+  
+  ### Criminal Involvement
+  
+  # Number of charges / arrests
+  out$p_charge = ifelse(is.null(charge), 0, nrow(charge))
+  out$p_arrest = ifelse(is.null(arrest), 0, nrow(arrest))
+  
+  # Number of times sentenced to jail/prison 30 days or more
+  out$p_jail30 = ifelse(is.null(prison), 0, sum(jail$sentence_days >= 30, na.rm=TRUE))
+  out$p_prison30 = ifelse(is.null(prison), 0, sum(prison$sentence_days >= 30, na.rm=TRUE))
+  
+  # Number of prison sentences
+  out$p_prison =  ifelse(is.null(prison), 0, nrow(prison))
+  
+  # Number of times on probation
+  out$p_probation =  ifelse(is.null(prob), 0, sum(prob$prob_event=="On", na.rm = TRUE))
+  
+  
   return(out)
 }
+
+
+
+count_on_probation = function(charge, prob){
+  
+  # Make sure prob is sorted in ascending order of EventDate
+  
+  u_charge = charge %>%
+    group_by(offense_date) %>%
+    summarize(count = n()) %>%
+    mutate(rank = findInterval(as.numeric(offense_date), as.numeric(prob$EventDate)))  %>%
+    group_by(rank) %>%
+    mutate(
+      event_before = ifelse(rank==0, NA, prob$prob_event[rank]),
+      days_before = ifelse(rank==0, NA, floor(as.numeric(as.period(interval(prob$EventDate[rank],offense_date)), "days"))),
+      event_after = ifelse(rank==nrow(prob), NA, prob$prob_event[rank+1]),
+      days_after = ifelse(rank==nrow(prob),NA, floor(as.numeric(as.period(interval(offense_date, prob$EventDate[rank+1])), "days")))
+    ) %>%
+    mutate(is_on_probation = pmap(list(event_before, days_before, event_after, days_after), .f=classify_charge)) %>%
+    unnest()
+  
+  return(sum(u_charge$count[u_charge$is_on_probation]))
+}
+
+
+
+classify_charge = function(event_before, days_before, event_after, days_after,
+                           thresh_days_before=365, thresh_days_after=30) {
+  
+  if (is.na(event_before)) {
+    # No events before
+    if (event_after == "Off" & days_after <= thresh_days_after) {
+      return(TRUE)
+    }
+    
+  } else if (is.na(event_after)) {
+    # No events after
+    if (event_before == "On" & days_before <= thresh_days_before) {
+      return(TRUE)
+    }
+  }
+  
+  else { # Neither event is NA
+    
+    if (event_before=="On" & event_after=="Off") {
+      return(TRUE)
+      
+    } else if (event_before=="On" & days_before <= thresh_days_before & event_after=="On") {
+      return(TRUE)
+      
+    } else if (event_before=="Off" & event_after=="Off" & days_after <= thresh_days_after) {
+      return(TRUE)
+    } 
+  }
+  return(FALSE)
+}
+
+
 
 
 compare_cols <- function(df) {
