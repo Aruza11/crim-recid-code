@@ -1,0 +1,100 @@
+---
+title: "Investigating Age"
+output: html_notebook
+---
+
+```{r}
+set.seed(238)
+
+age_low = 25
+age_high = 45
+
+accuracy = features %>%
+  inner_join(outcomes, by = c("person_id","screening_date")) %>%
+  inner_join(
+    data_before %>% 
+      select(person_id, screening_date, people) %>%
+      unnest() %>%
+      select(person_id, screening_date, race),
+    by = c("person_id","screening_date")
+  ) %>%
+  filter(!is.na(first_offense_date) & !is.na(current_offense_date)) %>%
+  filter(race %in% c("African-American","Caucasian")) %>%
+  mutate(race = if_else(race=="African-American","Black","White")) %>%
+  mutate(AGE = ifelse(p_current_age <= age_low, 1, 
+                      ifelse(p_current_age > age_high, 0, NA)),
+         COMPAS = if_else(`Risk of Recidivism_decile_score` >= 5, 1, 0)) %>%
+  select(person_id, screening_date, race, p_current_age, recid, AGE, COMPAS) %>%
+  filter(!is.na(AGE)) %>%
+  gather(key='algorithm', value='pred', AGE, COMPAS) %>%
+  mutate(correct = pred == recid) %>%
+  slice(sample(1:n())) %>%
+  group_by(race, algorithm) %>%
+  mutate(fold = mod(row_number(),10)) %>%
+  group_by(fold, race, algorithm) %>%
+  summarize(count = n(), 
+            TPR = sum(correct == TRUE & pred == 1) / sum(recid == 1),
+            FPR = sum(correct == FALSE & pred == 1) / sum(recid == 0),
+            TNR = sum(correct == TRUE & pred == 0) / sum(recid == 0),
+            FNR = sum(correct == FALSE & pred == 0) / sum(recid == 1)
+  )
+```
+
+```{r}
+accuracy_plot = accuracy %>%
+  gather(key = "type", value = "rate", TPR, FPR, TNR, FNR) %>%
+  mutate(plot = factor(if_else(type %in% c("TPR","FPR"), "TPR/FPR", "TNR/FNR"), levels=c("TPR/FPR", "TNR/FNR"))) %>%
+  mutate(group = factor(paste0(algorithm,"(",race,")"), 
+                        levels=c("AGE(Black)","COMPAS(Black)","AGE(White)","COMPAS(White)")
+  ))
+```
+
+
+```{r}
+ggplot(accuracy_plot) +
+  geom_jitter(aes(x = as.factor(group), y = rate, shape=as.factor(type), color=as.factor(race)), 
+              width=.2,
+              size=3)  +
+  facet_grid(. ~ plot) +
+  theme_bw()
+```
+
+### Distribuiton of Age plots
+
+```{r}
+left_join(
+  data_before %>% 
+    select(person_id, screening_date, people) %>%
+    unnest() %>%
+    select(person_id, screening_date, race),
+  features,
+  by = c("person_id","screening_date")
+) %>%
+  filter(race %in% c("African-American", "Caucasian")) %>%
+  ggplot() +
+  geom_histogram(aes(x=p_current_age, fill=race), bins=30)+
+  ggtitle("Histogram of age on screening date")
+```
+
+
+```{r}
+left_join(
+  data_before %>% 
+    select(person_id, screening_date, people) %>%
+    unnest() %>%
+    select(person_id, screening_date, race),
+  features,
+  by = c("person_id","screening_date")
+) %>%
+  filter(race %in% c("African-American", "Caucasian")) %>%
+  ggplot() +
+  geom_histogram(aes(x=p_current_age,y=..density..), bins=30)+
+  ggtitle("Normalized histogram of age on screening date") +
+  facet_grid(. ~ race)
+```
+
+
+
+
+
+
