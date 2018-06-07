@@ -47,10 +47,12 @@ train_violent_xgb = xgb.DMatrix(
 ### Prepare training data (Version B input)
 feat = read_csv("features_vB.csv")
 
+feat = feat %>%
+  filter(!is.na(first_offense_date) & !is.na(current_offense_date))
+
 ## Select features and round count features
 train_violent = feat %>%
   rename(p_violence_raw = "Risk of Violence_raw_score") %>%
-  #filter(!is.na(first_offense_date) & !is.na(current_offense_date)) %>%
   transmute(p_current_age,
             p_age_first_offense,
             p_juv_fel_count = pmin(p_juv_fel_count,2),
@@ -58,9 +60,12 @@ train_violent = feat %>%
             p_murder_arrest = pmin(p_murder_arrest,3),
             p_felassault_arrest = pmin(p_felassault_arrest,3),
             p_misdemassault_arrest = pmin(p_misdemassault_arrest,3),
-            p_famviol_arrest = pmin(p_famviol_arrest,3),
+            #p_famviol_arrest = pmin(p_famviol_arrest,3),
             p_sex_arrest = pmin(p_sex_arrest,3),
             p_weapons_arrest = pmin(p_weapons_arrest,3),
+            p_n_on_probation = pmin(p_n_on_probation,5),
+            p_current_on_probation = pmin(p_current_on_probation,5),
+            p_prob_revoke = pmin(p_prob_revoke,5),
             p_violence_raw)
 
 ## Format for xgboost
@@ -71,18 +76,44 @@ train_violent_xgb = xgb.DMatrix(
 ```
 
 ```{r}
+### Linear model
+
+md_lm = lm(p_violence_raw ~ . + I(p_current_age^2), data=train_violent)
+
+pred = predict(md_lm, newdata=train_violent)
+actual = train_violent$p_violence_raw
+
+rmse = sqrt(mean((pred - actual)^2))
+
+axis_min = min(min(pred),min(actual))
+axis_max = max(max(pred),max(actual))
+
+par(pty="s")
+plot(actual, pred,
+     xlab="Raw Violence Score",
+     ylab="Prediction",
+     main=paste("RMSE:",round(rmse,2)),
+     xlim=c(axis_min,axis_max),
+     ylim=c(axis_min,axis_max))
+abline(a=0,b=1,col='red')
+```
+
+
+
+
+```{r}
 ### Grid search over parameters
 set.seed(3628)
 
 ## Set parameters (each combination will be run)
 param <- list(objective = "reg:linear",
               eval_metric = "rmse",
-              eta = c(.1,.3),
-              gamma = c(.1,.5), 
-              max_depth = c(2,5,10),
-              min_child_weight = c(1,10),
-              subsample = 1,
-              colsample_bytree = 1
+              eta = c(.05,.1),
+              gamma = c(.5, 1), 
+              max_depth = c(2,5),
+              min_child_weight = c(5,10),
+              subsample = c(1),
+              colsample_bytree = c(1)
 )
 param_df = expand.grid(param) # Each row is a set of parameters to be cross validated
 n_param = nrow(param_df)
@@ -106,9 +137,9 @@ for (i_param in 1:n_param) {
                 params = list(param_df[i_param,])[[1]], 
                 nthread=6, 
                 nfold=5, 
-                nrounds=1000,
+                nrounds=5000,
                 verbose = FALSE, 
-                early_stopping_rounds=10, 
+                early_stopping_rounds=100, 
                 maximize=FALSE)
   
   performance[i_param,col_eval_log] = mdcv$evaluation_log[mdcv$best_iteration,]
@@ -126,13 +157,43 @@ md = xgb.train(data=train_violent_xgb,
                nthread=6)
 ```
 
+```{r}
+## Avg test error by different hyperparameter values
+
+res = cbind(param_df, performance)
+
+res %>%
+  group_by(eta) %>%
+  summarize(mean(test_rmse_mean))
+
+res %>%
+  group_by(gamma) %>%
+  summarize(mean(test_rmse_mean))
+
+res %>%
+  group_by(max_depth) %>%
+  summarize(mean(test_rmse_mean))
+
+res %>%
+  group_by(min_child_weight) %>%
+  summarize(mean(test_rmse_mean))
+
+res %>%
+  group_by(subsample) %>%
+  summarize(mean(test_rmse_mean))
+
+res %>%
+  group_by(colsample_bytree) %>%
+  summarize(mean(test_rmse_mean))
+```
+
+
 
 ```{r}
 ## Plot predictions
 pred = predict(md, newdata=train_violent_xgb)
 actual = train_violent$p_violence_raw
-
-error_violent = pred-actual
+error = pred-actual
 
 rmse = sqrt(mean((pred - actual)^2))
 
@@ -150,6 +211,69 @@ abline(a=0,b=1,col='red')
 ```
 
 ```{r}
+res_violent = feat %>%
+  left_join(select(people_df, person_id, name, sex, race), by = "person_id")
+
+res_violent$pred = pred
+res_violent$actual = actual
+res_violent$error = error
+res_violent$abs_error = abs(error)
+res_violent$overest = pred > actual
+```
+
+```{r}
+print(paste("Fraction overestimated =",round(mean(res_violent$overest),2)))
+print(paste("Ratio African-American / Caucasian =",round(sum(res_violent$race=="African-American") / sum(res_violent$race=="Caucasian"),2)))
+print(paste("Ratio Men / Women =",round(sum(res_violent$sex=="Male") / sum(res_violent$sex=="Female"),2)))
+
+res_violent %>%
+  group_by(sex) %>%
+  summarize(sample_size=n(),mean(abs_error), frac_overest = mean(overest))
+
+res_violent %>%
+  group_by(race) %>%
+  summarize(sample_size=n(),mean(abs_error), frac_overest = mean(overest))
+
+res_violent %>%
+  mutate(age_decile = floor(p_current_age/10)*10) %>%
+  group_by(age_decile) %>%
+  summarize(sample_size=n(),mean(abs_error), frac_overest = mean(overest))
+
+res_violent %>%
+  group_by(p_charge) %>%
+  summarize(sample_size=n(),mean(abs_error), frac_overest = mean(overest))
+```
+
+```{r}
+### People with largest errors
+thresh = quantile(res_violent$abs_error, probs = .90)
+res_violent_worst = res_violent %>%
+  filter(abs_error > thresh)
+
+print(paste("Fraction overestimated =",round(mean(res_violent_worst$overest),2)))
+print(paste("Ratio African-American / Caucasian =",round(sum(res_violent_worst$race=="African-American") / sum(res_violent_worst$race=="Caucasian"),2)))
+print(paste("Ratio Men / Women =",round(sum(res_violent_worst$sex=="Male") / sum(res_violent_worst$sex=="Female"),2)))
+
+res_violent_worst %>%
+  group_by(sex) %>%
+  summarize(sample_size=n(),mean(abs_error), frac_overest = mean(overest))
+
+res_violent_worst %>%
+  group_by(race) %>%
+  summarize(sample_size=n(),mean(abs_error), frac_overest = mean(overest))
+
+res_violent_worst %>%
+  mutate(age_decile = floor(p_current_age/10)*10) %>%
+  group_by(age_decile) %>%
+  summarize(sample_size=n(),mean(abs_error), frac_overest = mean(overest))
+
+res_violent_worst %>%
+  group_by(p_charge) %>%
+  summarize(sample_size=n(),mean(abs_error), frac_overest = mean(overest))
+```
+
+
+```{r}
 ### Variable importance
 importance_matrix <- xgb.importance(model = md)
 xgb.plot.importance(importance_matrix = importance_matrix)
@@ -158,21 +282,37 @@ xgb.plot.importance(importance_matrix = importance_matrix)
 ## General Recidivism
 
 ```{r}
-### Prepare training data
+### Prepare training data (Version B input)
+feat = read_csv("features_vB.csv")
+
+feat = feat %>%
+  filter(!is.na(first_offense_date) & !is.na(current_offense_date))
 
 ## Select features and round count features
 train_general = feat %>%
-  transmute(p_age,
+  rename(p_recid_raw = "Risk of Recidivism_raw_score") %>%
+  transmute(p_current_age,
             p_age_first_offense,
-            p_narreest = p_felony_count_person+p_misdem_count_person+p_juv_fel_count, # Is this charges or arrests?
-            p_jail_visits_30 = pmin(p_jail_visits_30,5),
-            p_prison_visits = pmin(p_prison_visits,5),
+            #p_charge,
+            p_arrest,
+            p_jail30 = pmin(p_jail30,5),
+            #p_prison30 = pmin(p_prison30,5),
+            p_prison = pmin(p_prison,5),
+            p_probation = pmin(p_probation,5),
             p_recid_raw)
+
+train_general_age = train_general %>%
+  select(p_current_age, p_age_first_offense, p_recid_raw)
 
 ## Format for xgboost
 train_general_xgb = xgb.DMatrix(
  "data" = train_general %>% select(-p_recid_raw) %>% as.matrix(),
  "label" = train_general %>% select(p_recid_raw) %>% as.matrix()
+)
+
+train_general_age_xgb = xgb.DMatrix(
+ "data" = train_general_age %>% select(-p_recid_raw) %>% as.matrix(),
+ "label" = train_general_age %>% select(p_recid_raw) %>% as.matrix()
 )
 ```
 
@@ -183,12 +323,12 @@ set.seed(3628)
 ## Set parameters (each combination will be run)
 param <- list(objective = "reg:linear",
               eval_metric = "rmse",
-              eta = c(.1,.3),
-              gamma = c(.1,.5), 
-              max_depth = c(2,5,10),
-              min_child_weight = c(1,10),
-              subsample = 1,
-              colsample_bytree = 1
+              eta = c(.05,.1),
+              gamma = c(.5, 1), 
+              max_depth = c(2,5),
+              min_child_weight = c(5,10),
+              subsample = c(1),
+              colsample_bytree = c(1)
 )
 param_df = expand.grid(param) # Each row is a set of parameters to be cross validated
 n_param = nrow(param_df)
@@ -226,7 +366,7 @@ print(t(param_df[i_param_best,])) #Prints the best parameters
 
 set.seed(performance$seed[i_param_best])
 
-md = xgb.train(data=train_general_xgb, 
+md_general = xgb.train(data=train_general_xgb, 
                params=list(param_df[i_param_best,])[[1]], 
                nrounds=performance$iter[i_param_best], 
                nthread=6)
@@ -235,12 +375,11 @@ md = xgb.train(data=train_general_xgb,
 
 ```{r}
 ## Plot predictions
-pred = predict(md, newdata=train_general_xgb)
+pred = predict(md_general, newdata=train_general_xgb)
 actual = train_general$p_recid_raw
+error = pred-actual
 
 rmse = sqrt(mean((pred - actual)^2))
-
-error_general = pred-actual
 
 axis_min = min(min(pred),min(actual))
 axis_max = max(max(pred),max(actual))
@@ -257,23 +396,83 @@ abline(a=0,b=1,col='red')
 
 
 ```{r}
-train_general %>%
-  mutate(pred = predict(md, newdata=train_general_xgb),
-         error = pred - p_recid_raw,
-         decile = floor(p_age_first_offense/10)*10) %>%
-  group_by(decile) %>%
-  summarize(age_error=mean(abs(error)),
-            sample_size=n())
+res_general = feat %>%
+  left_join(select(people_df, person_id, name, sex, race), by = "person_id")
+
+res_general$pred = pred
+res_general$actual = actual
+res_general$error = error
+res_general$abs_error = abs(error)
+res_general$overest = pred > actual
 ```
 
+```{r}
+print(paste("Fraction overestimated =",round(mean(res_general$overest),2)))
+print(paste("Ratio African-American / Caucasian =",round(sum(res_general$race=="African-American") / sum(res_general$race=="Caucasian"),2)))
+print(paste("Ratio Men / Women =",round(sum(res_general$sex=="Male") / sum(res_general$sex=="Female"),2)))
+
+res_general %>%
+  group_by(sex) %>%
+  summarize(sample_size=n(),mean(abs_error), frac_overest = mean(overest))
+
+res_general %>%
+  group_by(race) %>%
+  summarize(sample_size=n(),mean(abs_error), frac_overest = mean(overest))
+
+res_general %>%
+  mutate(age_decile = floor(p_current_age/10)*10) %>%
+  group_by(age_decile) %>%
+  summarize(sample_size=n(),mean(abs_error), frac_overest = mean(overest))
+
+res_general %>%
+  group_by(p_charge) %>%
+  summarize(sample_size=n(),mean(abs_error), frac_overest = mean(overest))
+```
+
+```{r}
+### People with largest errors
+thresh = quantile(res_general$abs_error, probs = .90)
+res_general_worst = res_general %>%
+  filter(abs_error > thresh)
+
+print(paste("Fraction overestimated =",round(mean(res_general_worst$overest),2)))
+print(paste("Ratio African-American / Caucasian =",round(sum(res_general_worst$race=="African-American") / sum(res_general_worst$race=="Caucasian"),2)))
+print(paste("Ratio Men / Women =",round(sum(res_general_worst$sex=="Male") / sum(res_general_worst$sex=="Female"),2)))
+
+res_general_worst %>%
+  group_by(sex) %>%
+  summarize(sample_size=n(),mean(abs_error), frac_overest = mean(overest))
+
+res_general_worst %>%
+  group_by(race) %>%
+  summarize(sample_size=n(),mean(abs_error), frac_overest = mean(overest))
+
+res_general_worst %>%
+  mutate(age_decile = floor(p_current_age/10)*10) %>%
+  group_by(age_decile) %>%
+  summarize(sample_size=n(),mean(abs_error), frac_overest = mean(overest))
+
+res_general_worst %>%
+  group_by(p_charge) %>%
+  summarize(sample_size=n(),mean(abs_error), frac_overest = mean(overest))
+```
 
 ```{r}
 ### Variable importance
-importance_matrix <- xgb.importance(model = md)
+importance_matrix <- xgb.importance(model = md_general)
 xgb.plot.importance(importance_matrix = importance_matrix)
 ```
 
 ```{r}
-plot(error_general, error_violent)
+plot(res_violent$error, res_general$error)
 ```
 
+```{r}
+pid_select = c(8512)
+
+View(filter(people_df, person_id %in% pid_select))
+View(filter(casearrest_df, person_id %in% pid_select))
+View(filter(charge_df, person_id %in% pid_select))
+View(filter(jailhistory_df, person_id %in% pid_select))
+View(filter(prisonhistory_df, person_id %in% pid_select))
+```

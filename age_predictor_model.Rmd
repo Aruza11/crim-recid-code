@@ -4,10 +4,27 @@ output: html_notebook
 ---
 
 ```{r}
-set.seed(238)
+library(tidyverse)
+```
 
-age_low = 25
-age_high = 45
+```{r}
+load("Table_construction.Rdata")
+```
+
+```{r}
+### Baseline rates
+
+```
+
+
+
+```{r}
+age_low = 24
+age_high = 24
+```
+
+```{r}
+nsamp = 1000
 
 accuracy = features %>%
   inner_join(outcomes, by = c("person_id","screening_date")) %>%
@@ -25,12 +42,21 @@ accuracy = features %>%
                       ifelse(p_current_age > age_high, 0, NA)),
          COMPAS = if_else(`Risk of Recidivism_decile_score` >= 5, 1, 0)) %>%
   select(person_id, screening_date, race, p_current_age, recid, AGE, COMPAS) %>%
-  filter(!is.na(AGE)) %>%
+  filter(!is.na(AGE))
+
+if(!is.na(nsamp)) {
+  accuracy = accuracy %>%
+    group_by(race) %>%
+    dplyr::slice(sample(1:nsamp)) %>%
+    ungroup()
+}
+
+accuracy = accuracy %>%
   gather(key='algorithm', value='pred', AGE, COMPAS) %>%
   mutate(correct = pred == recid) %>%
-  slice(sample(1:n())) %>%
+  dplyr::slice(sample(1:n())) %>%
   group_by(race, algorithm) %>%
-  mutate(fold = mod(row_number(),10)) %>%
+  mutate(fold = row_number() %% 10) %>%
   group_by(fold, race, algorithm) %>%
   summarize(count = n(), 
             TPR = sum(correct == TRUE & pred == 1) / sum(recid == 1),
@@ -40,18 +66,143 @@ accuracy = features %>%
   )
 ```
 
+
+#### Fairness by age groups
+
 ```{r}
-accuracy_plot = accuracy %>%
+accuracy = features %>%
+  inner_join(outcomes, by = c("person_id","screening_date")) %>%
+  inner_join(
+    data_before %>% 
+      select(person_id, screening_date, people) %>%
+      unnest() %>%
+      select(person_id, screening_date, race),
+    by = c("person_id","screening_date")
+  ) %>%
+  filter(!is.na(first_offense_date) & !is.na(current_offense_date)) %>%
+  filter(race %in% c("African-American","Caucasian")) %>%
+  mutate(race = if_else(race=="African-American","Black","White")) %>%
+  mutate(AGE = ifelse(p_current_age <= age_low, 1, 
+                      ifelse(p_current_age > age_high, 0, NA)),
+         COMPAS = if_else(`Risk of Recidivism_decile_score` >= 5, 1, 0)) %>%
+  select(person_id, screening_date, race, p_current_age, recid, AGE, COMPAS) %>%
+  filter(!is.na(AGE)) %>%
+  group_by(p_current_age) %>%
+  mutate(n_age = n()) %>%
+  ungroup() %>%
+  filter(n_age > 100) %>%
+  gather(key='algorithm', value='pred', AGE, COMPAS) %>%
+  mutate(correct = pred == recid) %>%
+  dplyr::slice(sample(1:n())) %>%
+  group_by(p_current_age, algorithm) %>%
+  mutate(fold = row_number() %% 10) %>%
+  group_by(fold, p_current_age, algorithm) %>%
+  summarize(count = n(), 
+            TPR = sum(correct == TRUE & pred == 1) / sum(recid == 1),
+            FPR = sum(correct == FALSE & pred == 1) / sum(recid == 0),
+            TNR = sum(correct == TRUE & pred == 0) / sum(recid == 0),
+            FNR = sum(correct == FALSE & pred == 0) / sum(recid == 1)
+  )
+
+```
+
+```{r}
+accuracy %>%
   gather(key = "type", value = "rate", TPR, FPR, TNR, FNR) %>%
   mutate(plot = factor(if_else(type %in% c("TPR","FPR"), "TPR/FPR", "TNR/FNR"), levels=c("TPR/FPR", "TNR/FNR"))) %>%
-  mutate(group = factor(paste0(algorithm,"(",race,")"), 
-                        levels=c("AGE(Black)","COMPAS(Black)","AGE(White)","COMPAS(White)")
-  ))
+  mutate(group = paste0(algorithm,"(",p_current_age,")")) %>%
+  filter(algorithm == "COMPAS" & plot == "TPR/FPR" & type == "FPR")  %>%
+ggplot() +
+  geom_jitter(aes(x = as.factor(p_current_age), y = rate, shape=as.factor(type)), 
+              width=.01,
+              size=3)  +
+  facet_grid(. ~ plot) +
+  theme_bw()
+```
+
+
+------
+
+```{r}
+accuracy = features %>%
+  inner_join(outcomes, by = c("person_id","screening_date")) %>%
+  inner_join(
+    data_before %>% 
+      select(person_id, screening_date, people) %>%
+      unnest() %>%
+      select(person_id, screening_date, race),
+    by = c("person_id","screening_date")
+  ) %>%
+  filter(!is.na(first_offense_date) & !is.na(current_offense_date)) %>%
+  #filter(p_felony_count_person >= 1 | p_misdem_count_person >= 1) %>% # Minimum number of priors
+  filter(race %in% c("African-American","Caucasian")) %>%
+  mutate(race = if_else(race=="African-American","Black","White")) %>%
+  mutate(AGE = ifelse(p_current_age <= age_low, 1, 
+                      ifelse(p_current_age > age_high, 0, NA)),
+         COMPAS = if_else(`Risk of Recidivism_decile_score` >= 5, 1, 0)) %>%
+  select(person_id, screening_date, race, p_current_age, recid, AGE, COMPAS) %>%
+  filter(!is.na(AGE))
+```
+
+```{r}
+nsamp = accuracy %>%
+  group_by(p_current_age) %>%
+  summarize(n_black = sum(race == "Black"), n_white = sum(race=="White")) %>%
+  group_by(p_current_age) %>%
+  mutate(nsamp = min(n_black,n_white)) 
+
+nsamp
 ```
 
 
 ```{r}
-ggplot(accuracy_plot) +
+# Sample
+accuracy = accuracy %>%
+  left_join(select(nsamp, p_current_age, nsamp), by="p_current_age") %>%
+  filter(nsamp>0) %>%
+  group_by(race, p_current_age) %>%
+  dplyr::slice(sample(1:nsamp[1])) %>%
+  ungroup()
+```
+
+```{r}
+# Check counts
+accuracy %>%
+  group_by(p_current_age, race) %>%
+  summarize(n())
+
+accuracy %>%
+  group_by(race) %>%
+  summarize(n())
+```
+
+
+```{r}
+accuracy = accuracy %>%
+  gather(key='algorithm', value='pred', AGE, COMPAS) %>%
+  mutate(correct = pred == recid) %>%
+  dplyr::slice(sample(1:n())) %>%
+  group_by(race, algorithm) %>%
+  mutate(fold = row_number() %% 10) %>%
+  group_by(fold, race, algorithm) %>%
+  summarize(count = n(), 
+            TPR = sum(correct == TRUE & pred == 1) / sum(recid == 1),
+            FPR = sum(correct == FALSE & pred == 1) / sum(recid == 0),
+            TNR = sum(correct == TRUE & pred == 0) / sum(recid == 0),
+            FNR = sum(correct == FALSE & pred == 0) / sum(recid == 1)
+  )
+```
+
+
+
+```{r}
+accuracy %>%
+  gather(key = "type", value = "rate", TPR, FPR, TNR, FNR) %>%
+  mutate(plot = factor(if_else(type %in% c("TPR","FPR"), "TPR/FPR", "TNR/FNR"), levels=c("TPR/FPR", "TNR/FNR"))) %>%
+  mutate(group = factor(paste0(algorithm,"(",race,")"), 
+                        levels=c("AGE(Black)","AGE(White)","COMPAS(Black)","COMPAS(White)")
+  )) %>%
+ggplot() +
   geom_jitter(aes(x = as.factor(group), y = rate, shape=as.factor(type), color=as.factor(race)), 
               width=.2,
               size=3)  +
@@ -59,7 +210,22 @@ ggplot(accuracy_plot) +
   theme_bw()
 ```
 
-### Distribuiton of Age plots
+```{r}
+accuracy %>%
+  gather(key = "type", value = "rate", TPR, FPR, TNR, FNR) %>%
+  mutate(plot = factor(if_else(type %in% c("TPR","FPR"), "TPR/FPR", "TNR/FNR"), levels=c("TPR/FPR", "TNR/FNR"))) %>%
+  mutate(group = factor(paste0(plot,"(",race,")"), 
+                        levels=c("TPR/FPR(Black)","TNR/FNR(Black)","TPR/FPR(White)","TNR/FNR(White)")
+  )) %>%
+ggplot() +
+  geom_jitter(aes(x = as.factor(group), y = rate, shape=as.factor(type), color=as.factor(race)), 
+              width=.2,
+              size=3)  +
+  facet_grid(. ~ algorithm) +
+  theme_bw()
+```
+
+### Distribution of Age plots
 
 ```{r}
 left_join(
@@ -94,6 +260,13 @@ left_join(
 ```
 
 
+
+```{r}
+features %>%
+  mutate(n_priors = p_felony_count_person + p_misdem_count_person) %>%
+  ggplot() +
+  geom_bin2d(aes(x=p_current_age, y=n_priors))
+```
 
 
 

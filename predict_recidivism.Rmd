@@ -1,0 +1,173 @@
+---
+title: "Predicting Recidivism"
+output: html_notebook
+---
+
+```{r}
+library(tidyverse)
+library(xgboost)
+```
+
+```{r}
+load("Table_construction.Rdata")
+```
+
+```{r}
+### Prepare training data (Version B input)
+
+features = features %>%
+  filter(!is.na(first_offense_date) & !is.na(current_offense_date))
+
+outcomes = outcomes %>%
+  inner_join(features, by=c("person_id","screening_date")) %>%
+  select(person_id, screening_date, first_offense_date, current_offense_date, recid, recid_violent) %>%
+  filter(!is.na(first_offense_date) & !is.na(current_offense_date))
+
+compas_df_wide = compas_df_wide %>%
+  inner_join(select(features, person_id, screening_date, first_offense_date, current_offense_date), by=c("person_id","screening_date")) %>%
+  filter(person_id %in% features$person_id & screening_date %in% features$screening_date)
+
+data_before = data_before %>%
+  filter(!is.na(first_offense_date) & !is.na(current_offense_date))
+
+data_on = data_on %>%
+  filter(!is.na(first_offense_date) & !is.na(current_offense_date))
+
+data_after = data_after %>%
+  filter(!is.na(first_offense_date) & !is.na(current_offense_date))
+
+
+
+## Select features and round count features
+train = features %>%
+  inner_join(outcomes, by = c("person_id","screening_date")) %>%
+  transmute(recid,
+            p_current_age,
+            p_age_first_offense,
+            p_juv_fel_count = pmin(p_juv_fel_count,2),
+            p_felprop_violarrest = pmin(p_felprop_violarrest,5),
+            p_murder_arrest = pmin(p_murder_arrest,3),
+            p_felassault_arrest = pmin(p_felassault_arrest,3),
+            p_misdemassault_arrest = pmin(p_misdemassault_arrest,3),
+            #p_famviol_arrest = pmin(p_famviol_arrest,3),
+            p_sex_arrest = pmin(p_sex_arrest,3),
+            p_weapons_arrest = pmin(p_weapons_arrest,3),
+            p_n_on_probation = pmin(p_n_on_probation,5),
+            p_current_on_probation = pmin(p_current_on_probation,5),
+            p_prob_revoke = pmin(p_prob_revoke,5))
+```
+
+
+# Logistic Regression
+
+```{r}
+mdl_glm = glm(recid ~ . + I(p_current_age^2), family=binomial(link='logit'), data=train)
+
+summary(mdl_glm)
+```
+
+```{r}
+pred = data.frame(glm = predict(mdl_glm, type = "response"))
+```
+
+
+# xgboost
+
+```{r}
+## Format for xgboost
+train_xgb = xgb.DMatrix(
+ "data" = train_violent %>% select(-recid) %>% as.matrix(),
+ "label" = train_violent %>% select(recid) %>% as.matrix()
+)
+```
+
+
+```{r}
+### Grid search over parameters
+set.seed(473)
+
+## Set parameters (each combination will be run)
+param <- list(objective = "binary:logistic",
+              eta = c(.05,.1),
+              gamma = c(.5, 1), 
+              max_depth = c(2,5),
+              min_child_weight = c(5,10),
+              subsample = c(1),
+              colsample_bytree = c(1)
+)
+param_df = expand.grid(param) # Each row is a set of parameters to be cross validated
+n_param = nrow(param_df)
+
+## Allocate space for performance statistics (and set seeds)
+performance = data.frame(
+  i_param = 1:n_param,
+  seed = sample.int(10000, n_param),
+  matrix(NA,nrow=2,ncol=5,
+         dimnames=list(NULL,
+                       c("iter","train_rmse_mean","train_rmse_std","test_rmse_mean","test_rmse_std"))))
+col_eval_log = 3:7 # Adjust manually. Column index in performance of evaluation_log output from xgb.cv
+
+## Loop through the different parameters sets
+for (i_param in 1:n_param) {
+  cat("Training on parameter set",i_param,"of",n_param,"\n")
+  
+  set.seed(performance$seed[i_param])
+  
+  mdcv = xgb.cv(data=train_xgb, 
+                params = list(param_df[i_param,])[[1]], 
+                nthread=6, 
+                nfold=5, 
+                nrounds=5000,
+                verbose = FALSE, 
+                early_stopping_rounds=50, 
+                maximize=FALSE)
+  
+  performance[i_param,col_eval_log] = mdcv$evaluation_log[mdcv$best_iteration,]
+}
+
+## Train on best parameters using best number of rounds
+i_param_best = performance$i_param[which.min(performance$test_rmse_mean)]
+print(t(param_df[i_param_best,])) #Prints the best parameters
+
+set.seed(performance$seed[i_param_best])
+
+mdl_xgb = xgb.train(data=train_xgb, 
+               params=list(param_df[i_param_best,])[[1]], 
+               nrounds=performance$iter[i_param_best], 
+               nthread=6)
+
+pred = bind_cols(pred, xgb = predict(mdl_xgb, newdata=train_xgb))
+```
+
+
+# Compare predictions
+
+
+```{r}
+## Plot predictions
+par(pty="s")
+plot(pred$glm, pred$xgb,
+     xlab="GLM",
+     ylab="xgboost",
+     xlim=c(0,1),
+     ylim=c(0,1))
+abline(a=0,b=1,col='red')
+```
+
+```{r}
+features %>%
+  bind_cols(pred) %>%
+  mutate(diff = glm - xgb) %>%
+  mutate(consensus_high = glm > .7 & xgb > .7) %>%
+  group_by(consensus_high) %>%
+  summarize(mean(p_felony_count_person), mean(`Risk of Recidivism_decile_score`))
+```
+
+```{r}
+features %>%
+  bind_cols(pred) %>%
+  mutate(diff = glm - xgb) %>%
+  mutate(consensus_high = glm > .7 & xgb > .7) %>%
+  filter(consensus_high==TRUE)
+```
+

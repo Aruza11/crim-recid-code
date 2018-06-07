@@ -2,8 +2,8 @@ library(shiny)
 library(tidyverse)
 library(lubridate)
 
-#load("Table_construction.Rdata")
-
+load("Table_construction.Rdata")
+  
 # Define UI for app that draws a histogram ----
 ui <- fluidPage(
   
