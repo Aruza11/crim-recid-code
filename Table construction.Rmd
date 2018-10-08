@@ -264,6 +264,7 @@ dynamic features-variables which will have a numeric value, and describe the cha
 
 *Interesting fact: when the data is in a sqlite tbl, data is automatically typed, so subtracting dates works. However, if you convert to a dataframe, the data is given a type, so subtracting dates doesn't work unless you manually convert it Date class. *
 
+*NOTE: need to filter out prison/jail visits which occurred as a RESULT of compas screening*
 dynamic_fel: 
 .	felony count per person
 .	checking for number of felonies that occurred at most 5 yrs before the screening date
@@ -295,27 +296,48 @@ dynamic_fel=df_beforeCOMPAS%>%
 
 dynamic_incarceration=df_beforeCOMPAS %>%
                         distinct(person_id,prison_in_custody,prison_out_custody,
-                                 jail_in_custody,jail_out_custody,case_number)%>%
+                                 jail_in_custody,jail_out_custody,case_number, screening_date)%>%
                         as_data_frame()%>%
+                        
                         mutate(prison_in_custody=ymd_hms(prison_in_custody),
                                prison_out_custody=ymd_hms(prison_out_custody),
-                               
-                               jail_in_custody=ymd_hms(jail_in_custody),
+                               screening_date=ymd__hms(screening_date)
+                        )%>%
+  
+                        filter(prison_out_custody<screening_date, 
+                               jail_out_custody<screening_date)%>%
+                        
+                        mutate(jail_in_custody=ymd_hms(jail_in_custody),
                                jail_out_custody=ymd_hms(jail_out_custody),
 
                                prison_time=abs(as.numeric
                                                (prison_out_custody-prison_in_custody,units="days")),
                                jail_time=abs(as.numeric
-                                             (jail_out_custody-jail_in_custody,units="days"))
+                                             (jail_out_custody-jail_in_custody,units="days")),
+                               
+                               prison_60=if_else(prison_time>=60,1,0),
+                               jail_60=if_else(jail_time>=60,1,0),
+                               
+                               
+                               prison_365=if_else(prison_time>=365,1,0),
+                               jail_365=if_else(jail_time>=365,1,0),
+                    
+                               
                                )%>%
 
                         group_by(person_id) %>%
                            summarize(prison_visits=n_distinct(prison_in_custody,na.rm=TRUE),
-                                     
                                      prison_time=sum(unique(prison_time)),
-
+                                     prison_60=sum(prison_60),
+                                     prison_365=sum(prison_365),
+                                     
                                      jail_visits=n_distinct(jail_in_custody,na.rm=TRUE),
                                      jail_time=sum(unique(jail_time)),
+                                     jail_60=sum(jail_60),
+                                     jail_365=sum(jail_365)
+                                     
+                                     latest_jail=max(jail_out_custody),
+                                     latest_prison=max(prison_out_custody),
                                      numcases=n_distinct(case_number)
                                      )
 
@@ -559,7 +581,8 @@ convictions_subset$case_number=as.character(convictions_subset$case_number)
 #want the latest disposition per case; some cases/charges have more than one disposition
 
 arnold2<-df_beforeCOMPAS%>%
-            distinct(person_id,case_number,charge_number,charge_degree,statute)%>%
+            distinct(person_id,screening_date, case_number,charge_number,charge_degree,
+                     statute,offense_date)%>%
             as_data_frame()%>%
             left_join(convictions_subset, by=c("person_id","case_number","charge_number"))%>%
   
@@ -567,12 +590,16 @@ arnold2<-df_beforeCOMPAS%>%
                    is_misdem= if_else(substr(charge_degree,2,2)=="M",1,0),
                    is_traffic=if_else(charge_degree=="(0)"|charge_degree=="(TCX)",1,0),
                    is_violent=if_else(substr(statute,1,3) %in% c("777","782","784","794","806","812","825","827"),1,0),
+                   days_bw=as.numeric(screening_date-offense_date,units="days"),
+                   logical=days_bw<=730,
+               
 
                    prior_conviction_F=if_else(is_felony==1&convicted==1,1,0),
                    prior_conviction_M=if_else(is_misdem==1&convicted==1,1,0),
                    prior_conviction_T=if_else(is_traffic==1&convicted==1,1,0),
 
-                   violent_conviction=if_else(is_violent==1&convicted==1,1,0))%>%
+                   violent_conviction=if_else(is_violent==1&convicted==1,1,0),
+                   violent_conviction2yrs=if_else(violent_conviction=1&logical,1,0))%>%
             distinct()%>%
             group_by(person_id)%>%
               summarise(
@@ -580,6 +607,7 @@ arnold2<-df_beforeCOMPAS%>%
                         prior_conviction_M=sum(prior_conviction_M),
                         prior_conviction_T=sum(prior_conviction_T),
                         violent_conviction=sum(is_violent),
+                        violent_conviction2yrs=sum(violent_conviction2yrs)
                          total_convictions=sum(convicted)
                         )
 
@@ -812,6 +840,7 @@ features<-features0%>%
                    cq_prior_conviction_F=prior_conviction_F,
                    cq_prior_conviction_M=prior_conviction_M,
                    cq_violent_conviction=violent_conviction,
+                   cq_violent_conviction2yrs=violent_conviction2yrs,
                    # cq_prior_conviction_T=prior_conviction_T,
                    cq_total_convictions=total_convictions,
                    cq_fail_appear_two_yr=fail_appear_two_yr, cq_fail_appear_two_plus=fail_appear_two_plus,
@@ -880,7 +909,42 @@ features<-features0%>%
                   arnold_nvca_raw=current_violent_nvca+current_violent20_nvca+pending_charge_nvca+
                                   prior_conviction_nvca+prior_convVIO_nvca,
                   arnold_nvca=case_when(arnold_nvca_raw<=3~"No",
-                                       arnold_nvca_raw>3~"Yes")
+                                       arnold_nvca_raw>3~"Yes"),
+                 
+                 #computing Salient Factor Score (SFS)
+                 #SFS raw features 
+                 commitments60raw=jail_60+prison_60, 
+                 imprisoned365raw=jail_365+prison_365,
+                 last_imprison=if_else(is.na(max(latest_jail,latest_prison)),p_dob,
+                                       max(latest_jail,latest_prison)),
+                 crimefreeraw=(screening_date-last_imprison)/365.25,
+                 #SFS weighted features
+                 commitments_60=case_when(commitments60raw=0~4,
+                                          commitments60raw=1~3,
+                                          commitments60raw=2~2,
+                                          commitments60raw=3|commitments60raw=4~1,
+                                          commitments60raw>=5~0),
+                 imprisoned365=case_when(imprisoned365<=2~2,
+                                         imprisoned365=3|imprisoned365=4~1,
+                                         imprisoned365>=5~0),
+                 sfs_age=case_when(p_current_age>=37~5,
+                                   p_current_age>=24&p_current_age<=36~4,
+                                   p_current_age>=20&p_current_age<=23~2,
+                                   TRUE~0),
+                 sfs_age=if_else(p_prison_visits+p_jail_visits>=5,sfs_age-1, sfs_age),
+                 crimefree=case_when(crimefreeraw>=3~2,
+                                     crimefreeraw>=1&crimefreeraw<=3~1,
+                                     TRUE~0),
+                 sfs_violent=if_else(p_current_violent_offense>0|cq_violent_conviction2yrs>1|
+                                      cq_violent_conviction>1,T,F),
+                 #computing sfs 
+                 sfsraw=commitments_60+imprisoned365+sfs_age+crimefree,
+                 sfs=case_when(sfsraw<=3~0,
+                                  sfsraw=4|sfsraw=5~1,
+                                  sfsraw>=6&sfsraw<=8~2.
+                                  sfsraw>=9~3),
+                 sfs=if_else(sfs_violent, sfs,sfs+1)
+                 
               )%>%
           subset(select=-c(arnold_fta_raw,pending_charge_fta,prior_conviction_fta,
                                  fta_pretrial2yr_fta,fta_pretrial2plus_fta,
@@ -888,7 +952,9 @@ features<-features0%>%
                                  prior_convF_nca,prior_convVIO_nca,fta_pretrial2yr_nca,
                                  prior_incarceration_nca,
                            arnold_nvca_raw,current_violent_nvca,current_violent20_nvca,
-                                 pending_charge_nvca,prior_conviction_nvca,prior_convVIO_nvca)
+                                 pending_charge_nvca,prior_conviction_nvca,prior_convVIO_nvca,
+                           commitments60raw,imprisoned365raw, last_imprison, crimefreeraw,
+                           sfsraw)
                   )
 
 ```

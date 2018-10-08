@@ -1,0 +1,233 @@
+---
+title: "violence_history"
+output: html_document
+Purpose: Reverse engineering the violence history subscale of the COMPAS violent recidivism score
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(warning=F, message=F,echo = TRUE)
+```
+
+
+```{r}
+library(tidyverse)
+library(magrittr)
+load("Table_construction.Rdata") #loading beau's version of data
+#see violence_score.Rmd for source of this polynomial
+age_poly =function(x){ 0.000000407808994851*x^4 - 0.000088176770770443*x^3 + 0.007436939324225960*x^2 - 0.316106532730131000*x + 1.553988869973560000}
+
+```
+
+
+Violence History subscale with Beau's filters, and removing people whose violence scores are below the age poly line
+
+```{r}
+features_filt = features_before_on %>%
+  inner_join(
+    data_before %>% 
+      select(person_id, screening_date, people) %>%
+      unnest() %>%
+      select(person_id, screening_date, race, sex, name),
+    by = c("person_id","screening_date")
+  ) %>%
+  inner_join(features_on, by = c("person_id","screening_date")) %>%
+  inner_join(outcomes, by = c("person_id","screening_date")) %>%
+  filter(`Risk of Recidivism_decile_score` != -1, `Risk of Violence_decile_score` != -1) %>% # Filter 1
+  filter(!is.na(current_offense_date)) %>% # Filter 3
+  filter(screening_date <= current_offense_date_limit) %>% # Filter 4
+  mutate(recid_use = as.factor(recid_violent), 
+         # Select recidivism or violent recidivism to use in this script 
+         decile_use = `Risk of Violence_decile_score`) %>%
+        # Select recidivism or violent recidivism decile score to use in this script
+  filter(p_current_age>18 & p_current_age<=70) #filter 5, age filter
+   
+
+#round the count features 
+train = features_filt %>%
+  mutate(
+    #p_current_age,
+    p_age_first_offense,
+    p_juv_fel_count = pmin(p_juv_fel_count,2),
+    p_felprop_violarrest = pmin(p_felprop_violarrest,5),
+    p_murder_arrest = pmin(p_murder_arrest,3),
+    p_felassault_arrest = pmin(p_felassault_arrest,3),
+    p_misdemassault_arrest = pmin(p_misdemassault_arrest,3),
+    #p_famviol_arrest = pmin(p_famviol_arrest,3), #there are none
+    p_sex_arrest = pmin(p_sex_arrest,3),
+    p_weapons_arrest = pmin(p_weapons_arrest,3),
+    p_n_on_probation = pmin(p_n_on_probation,5),
+    p_current_on_probation = pmin(p_current_on_probation,5),
+    p_prob_revoke = pmin(p_prob_revoke,5),
+    #add x-jitter to outliers
+    violence_history=ifelse(`Risk of Violence_raw_score` >= age_poly(p_current_age),
+                            p_juv_fel_count+p_felprop_violarrest+
+                            p_murder_arrest+p_felassault_arrest+
+                            p_misdemassault_arrest +#p_famviol_arrest +
+                            p_sex_arrest+p_weapons_arrest,
+                            
+                            p_juv_fel_count+p_felprop_violarrest+
+                            p_murder_arrest+p_felassault_arrest+
+                            p_misdemassault_arrest +#p_famviol_arrest +
+                            p_sex_arrest+p_weapons_arrest+.25),
+    
+    history_noncomp=ifelse(`Risk of Violence_raw_score` >= age_poly(p_current_age),
+                                    p_prob_revoke+p_probation+p_current_on_probation+p_n_on_probation,
+                                    p_prob_revoke+p_probation+p_current_on_probation+p_n_on_probation+.25),
+
+    violence_remainder=`Risk of Violence_raw_score`-age_poly(p_current_age))
+
+#number of points below the age_poly(outliers)
+train%>%filter(`Risk of Violence_raw_score` <= age_poly(p_current_age))%>%
+        # nrow()%>%
+        write.csv("violence_agepoly_outliers.csv")
+
+
+bottom_edge=train%>%
+            filter(`Risk of Violence_raw_score` >= age_poly(p_current_age) ) %>% #filter outliers
+            # select(violence_history, violence_remainder)%>%
+            group_by(violence_history)%>%
+              arrange(violence_history,.by_group=TRUE)%>%
+              top_n(n=-1,wt=violence_remainder)%>%
+            unique()
+
+lookup_fn<-function(x,dataframe){
+  if (x>=6){
+    x=6}
+  res=dataframe[x+1,]$violence_remainder
+  return(res)
+}
+v_lookup<-Vectorize(lookup_fn,vectorize.args = "x")
+
+
+
+```
+
+```{r}
+#violence history
+linev2=bottom_edge%>%
+        filter(violence_history<=7)%>%
+        mutate(violence_history_jittered=ifelse(violence_history>=3,
+                                       violence_history+.5,
+                                       violence_history)
+        )
+            
+  
+  
+ggplot(train, aes(x=violence_history, 
+                  y=violence_remainder,
+                  colour = `Risk of Violence_raw_score` >= age_poly(p_current_age)
+                  )) +
+     scale_colour_manual(name = 'age_poly outliers', 
+                         values = setNames(c('black','red'),c(T, F)),guide=F) +
+     geom_point(shape=1)  +
+     geom_line(data=filter(bottom_edge,violence_history<=7),
+               aes(x=violence_history,
+                   y=violence_remainder,
+                   colour=violence_history<=7))+
+     # geom_line(data=linev2,
+     #           aes(x=violence_history_jittered,
+     #               y=violence_remainder,
+     #               colour=violence_history<=7))+
+    
+     ggtitle("Filtered Version COMPAS Violent Recid\n  Age Remainder vs Violence History") +
+     xlab("Total Violence History Items") +
+     ylab("COMPAS Age Remainder")+
+     xlim(0,15) +
+     theme(text=element_text(size=18),
+           axis.ticks=element_line(size=1),
+           axis.ticks.length = unit(3, "mm"))
+#add line extending to the right
+
+ggplot(train, aes(x=violence_history, y=violence_remainder-v_lookup(train$violence_history,bottom_edge),
+                  colour = `Risk of Violence_raw_score` >= age_poly(p_current_age)
+                  )) +
+     scale_colour_manual(name = 'age_poly outliers', 
+                         values = setNames(c('black','red'),c(T, F)),guide=F) +
+     geom_point(shape=1)  +
+
+     ggtitle("Filtered Version New Remainder vs Violence History") +
+     xlab("Total Violence History Items") +
+     ylab("New Remainder")+
+     xlim(0,25) +
+     theme(text=element_text(size=18),
+           axis.ticks=element_line(size=1),
+           axis.ticks.length = unit(3, "mm"))
+
+
+```
+
+
+Plotting the History of Noncompliance subscale against the age remainder-violence history piecewise
+```{r}
+ggplot(train, aes(x=history_noncomp, y=violence_remainder,
+                  colour = `Risk of Violence_raw_score` >= age_poly(p_current_age)
+                  )) +
+     scale_colour_manual(name = 'age_poly outliers', 
+                         values = setNames(c('black','red'),c(T, F)),guide=F) +
+     geom_point(shape=1,alpha=.5)  +
+     ggtitle("Filtered Version Age Remainder vs History Noncomp") +
+     xlab("Total History NoncompItems") +
+     ylab("Age Remainder")+
+     xlim(0,5) 
+
+ggplot(train, aes(x=history_noncomp, y=violence_remainder-v_lookup(train$violence_history,bottom_edge),
+                  colour = `Risk of Violence_raw_score` >= age_poly(p_current_age)
+                  )) +
+     scale_colour_manual(name = 'age_poly outliers', 
+                         values = setNames(c('black','red'),c(T, F)),guide=F) +
+     geom_point(shape=1,alpha=.5)  +
+     ggtitle("Filtered Version New Remainder vs Violence History") +
+     xlab("Total History Noncomp Items") +
+     ylab("New Remainder")+
+     xlim(0,5) 
+
+summary(train$violence_remainder)
+adjusted_remainder=train$violence_remainder-v_lookup(train$violence_history,bottom_edge)
+
+summary(adjusted_remainder)
+
+boxplot(adjusted_remainder, train$violence_remainder,
+        main="Old vs new remainders",
+        at=c(1,2),
+        names=c("age+violence remainder", "age remainder"),
+        col=c("dodgerblue4","cornflowerblue"),
+        border="navy",
+        horizontal=TRUE,
+        notch=TRUE
+        )
+
+```
+
+
+Random other plots
+```{r}
+ggplot(train, aes(x=violence_history,y=`Risk of Violence_raw_score`))+
+  geom_point()
+
+ggplot(train, aes(x=violence_history,y=violence_remainder))+
+  geom_point()
+
+
+ggplot(train, aes(x=p_current_age,y=violence_remainder-v_lookup(train$violence_history,bottom_edge)))+
+    geom_point()
+
+ggplot(train, aes(x=p_prob_revoke, y=violence_remainder,
+                  colour = `Risk of Violence_raw_score` >= age_poly(p_current_age)
+                  )) +
+     scale_colour_manual(name = 'age_poly outliers', 
+                         values = setNames(c('black','red'),c(T, F)),guide=F) +
+     geom_point(shape=1)  +
+     xlim(0,25) 
+
+ggplot(train, aes(x=p_prob_revoke, y=violence_remainder-v_lookup(train$violence_history,bottom_edge),
+                  colour = `Risk of Violence_raw_score` >= age_poly(p_current_age)
+                  )) +
+     scale_colour_manual(name = 'age_poly outliers', 
+                         values = setNames(c('black','red'),c(T, F)),guide=F) +
+     geom_point(shape=1)  +
+     xlim(0,25) 
+
+
+
+```
+

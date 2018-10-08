@@ -3,7 +3,7 @@ title: "R Notebook"
 output: html_notebook
 ---
 
-This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+This is an [R ]Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
 
 Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Ctrl+Shift+Enter*. 
 
@@ -16,119 +16,119 @@ When you save the notebook, an HTML file containing the code and output will be 
 library(tidyverse)
 library(magrittr)
 
-# features<-read.csv("features.csv")
+features<-read.csv("features_vB.csv")
 ```
 
 
 ```{r}
 #Risk of Recidivism vs Age: p_current_age
-ggplot(features, aes(x=p_current_age, y=p_recid_raw)) +
+ggplot(features, aes(x=p_current_age, y=Risk.of.Recidivism_raw_score)) +
      geom_point(shape=1)  +
      ggtitle("Risk of Recidivism Raw vs Current Age")
 
 
 #Risk of Recidivism vs prison time: p_prison_time
-ggplot(features, aes(x=p_prison_time, y=p_recid_raw)) +
+ggplot(features, aes(x=p_prison_time, y=Risk.of.Recidivism_raw_score)) +
      geom_point(shape=1)  +
      ggtitle("Risk of Recidivism Raw vs Prison Time")
 
 #Risk of Recidivism vs prison visits: p_prison_visits
-ggplot(features, aes(x=p_prison_visits, y=p_recid_raw)) +
+ggplot(features, aes(x=p_prison_visits, y=Risk.of.Recidivism_raw_score)) +
      geom_point(shape=1)  +
      ggtitle("Risk of Recidivism Raw vs Prison Visits")
 
 #Risk of Recidivism vs jail time: p_jail_time
-ggplot(features, aes(x=p_jail_time, y=p_recid_raw)) +
+ggplot(features, aes(x=p_jail_time, y=Risk.of.Recidivism_raw_score)) +
      geom_point(shape=1)  +
      ggtitle("Risk of Recidivism Raw vs Jail Time")
 
 #Risk of Recidivism vs jail visits: p_jail_visits
-ggplot(features, aes(x=p_jail_visits, y=p_recid_raw)) +
+ggplot(features, aes(x=p_jail_visits, y=Risk.of.Recidivism_raw_score)) +
      geom_point(shape=1)  +
      ggtitle("Risk of Recidivism Raw vs Jail Visits")
 ##
 #Risk of Recidivism vs 5yrsFel: p_yrs5_felcount_person
-ggplot(features, aes(x=p_yrs5_felcount_person, y=p_recid_raw)) +
+ggplot(features, aes(x=p_yrs5_felcount_person, y=Risk.of.Recidivism_raw_score)) +
      geom_point(shape=1)  +
      ggtitle("Risk of Recidivism Raw vs 5yrsFel")
 
 #Risk of Recidivism vs Total Fel: p_felony_count_person
-ggplot(features, aes(x=p_felony_count_person, y=p_recid_raw)) +
+ggplot(features, aes(x=p_felony_count_person, y=Risk.of.Recidivism_raw_score)) +
      geom_point(shape=1)  +
      ggtitle("Risk of Recidivism Raw vs Fel Count")
 ##
 #Risk of Recidivism vs 5yrsMisdem: p_misdem_count_5yrs
-ggplot(features, aes(x=p_misdem_count_5yrs, y=p_recid_raw)) +
+ggplot(features, aes(x=p_misdem_count_5yrs, y=Risk.of.Recidivism_raw_score)) +
      geom_point(shape=1)  +
      ggtitle("Risk of Recidivism Raw vs 5yrsMisdem")
 
 #Risk of Recidivism vs Total Misdem: p_misdem_count_person
-ggplot(features, aes(x=p_misdem_count_person, y=p_recid_raw)) +
+ggplot(features, aes(x=p_misdem_count_person, y=Risk.of.Recidivism_raw_score)) +
      geom_point(shape=1)  +
      ggtitle("Risk of Recidivism Raw vs Misdem Count")
 ##
 #Risk of Recidivism vs 5yrsDrug: p_drug_count_5yrs
-ggplot(features, aes(x=p_drug_count_5yrs, y=p_recid_raw)) +
+ggplot(features, aes(x=p_drug_count_5yrs, y=Risk.of.Recidivism_raw_score)) +
      geom_point(shape=1)  +
      ggtitle("Risk of Recidivism Raw vs 5yrsDrug")
 
 #Risk of Recidivism vs Total Drug: p_drug_count_person
-ggplot(features, aes(x=p_drug_count_person, y=p_recid_raw)) +
+ggplot(features, aes(x=p_drug_count_person, y=Risk.of.Recidivism_raw_score)) +
      geom_point(shape=1)  +
      ggtitle("Risk of Recidivism Raw vs Drug Count")
 ##
 #Risk of Recidivism vs 5yrsTraffic: p_yrs5_trafcount_person
-ggplot(features, aes(x=p_yrs5_trafcount_person, y=p_recid_raw)) +
+ggplot(features, aes(x=p_yrs5_trafcount_person, y=Risk.of.Recidivism_raw_score)) +
      geom_point(shape=1)  +
      ggtitle("Risk of Recidivism Raw vs 5yrsTraffic")
 
 #Risk of Recidivism vs Total Traffic: p_traffic_count_person
-ggplot(features, aes(x=p_traffic_count_person, y=p_recid_raw)) +
+ggplot(features, aes(x=p_traffic_count_person, y=Risk.of.Recidivism_raw_score)) +
      geom_point(shape=1)  +
      ggtitle("Risk of Recidivism Raw vs Traffic Count")
 
 #Risk of Recidivism vs prior violent convictions: cq_violent_conviction
-ggplot(features, aes(x=cq_violent_conviction, y=p_recid_raw)) +
+ggplot(features, aes(x=cq_violent_conviction, y=Risk.of.Recidivism_raw_score)) +
      geom_point(shape=1)  +
      ggtitle("Risk of Recidivism Raw vs Violent Convictions")
 
 #Risk of Recidivism vs Total Convictions: cq_total_convictions
-ggplot(features, aes(x=cq_total_convictions, y=p_recid_raw)) +
+ggplot(features, aes(x=cq_total_convictions, y=Risk.of.Recidivism_raw_score)) +
      geom_point(shape=1)  +
      ggtitle("Risk of Recidivism Raw vs Total Convictions")
 
 #Risk of Recidivism vs Number of Cases: p_numcases
-ggplot(features, aes(x=p_numcases, y=p_recid_raw)) +
+ggplot(features, aes(x=p_numcases, y=Risk.of.Recidivism_raw_score)) +
      geom_point(shape=1)  +
      ggtitle("Risk of Recidivism Raw vs Number of Cases")
 
 #Risk of Recidivism  and number of failures to appear in 2 yrs:cq_fail_appear_two_yr
-ggplot(features, aes(x=cq_fail_appear_two_yr, y=p_recid_raw)) +
+ggplot(features, aes(x=cq_fail_appear_two_yr, y=Risk.of.Recidivism_raw_score)) +
      geom_point(shape=1)  +
      ggtitle("Risk of Recidivism Raw vs #Failure to appear in 2 yrs")
 
 #Risk of Recidivism  and number of failures to appear in 2 yrs plus: cq_fail_appear_two_plus
-ggplot(features, aes(x=cq_fail_appear_two_plus, y=p_recid_raw)) +
+ggplot(features, aes(x=cq_fail_appear_two_plus, y=Risk.of.Recidivism_raw_score)) +
      geom_point(shape=1)  +
      ggtitle("Risk of Recidivism Raw vs #Failure to appear in >2 yrs")
 
 #Risk of Recidivism  and total number of failures to appear 
-ggplot(features, aes(x=cq_fail_appear_two_yr+cq_fail_appear_two_plus, y=p_recid_raw)) +
+ggplot(features, aes(x=cq_fail_appear_two_yr+cq_fail_appear_two_plus, y=Risk.of.Recidivism_raw_score)) +
      geom_point(shape=1)  +
      ggtitle("Risk of Recidivism Raw vs Total# Failure to appear")
 
 #Risk of Recidivism vs race: p_race
-ggplot(features, aes(x=p_race, y=p_recid_raw)) +
+ggplot(features, aes(x=p_race, y=Risk.of.Recidivism_raw_score)) +
      geom_point(shape=1)  +
      ggtitle("Risk of Recidivism Raw vs Race")
 
 #Risk of Recidivism vs sex: p_sex
-ggplot(features, aes(x=p_sex, y=p_recid_raw)) +
+ggplot(features, aes(x=p_sex, y=Risk.of.Recidivism_raw_score)) +
      geom_point(shape=1)  +
      ggtitle("Risk of Recidivism Raw vs Sex")
 
 #Risk of Recidivism vs marital status
-ggplot(features, aes(x=p_marital_status, y=p_recid_raw)) +
+ggplot(features, aes(x=p_marital_status, y=Risk.of.Recidivism_raw_score)) +
      geom_point(shape=1)  +
      ggtitle("Risk of Recidivism Raw vs Marital Status")
 
@@ -138,54 +138,80 @@ ggplot(features, aes(x=p_marital_status, y=p_recid_raw)) +
 
 ```{r}
 age_recid=features%>%
-           select(p_current_age, p_recid_raw)%>%
+           select(p_current_age, Risk.of.Recidivism_raw_score)%>%
            filter(p_current_age>18&p_current_age<=70)%>%
            group_by(p_current_age)%>%
-              arrange(p_recid_raw,.by_group=TRUE)%>%
-              top_n(n=-1,wt=p_recid_raw)
+              arrange(Risk.of.Recidivism_raw_score,.by_group=TRUE)%>%
+              top_n(n=-1,wt=Risk.of.Recidivism_raw_score)
 # write.csv(age_recid,"age_recid.csv")
 
-ggplot(age_recid, aes(x=p_current_age, y=p_recid_raw)) +
+ggplot(age_recid, aes(x=p_current_age, y=Risk.of.Recidivism_raw_score)) +
      geom_point(shape=1)  +
      ggtitle("Regression Line Age vs Recid Score") +
      xlim(18,70)
 
-# plot(age_recid$p_current_age, age_recid$p_recid_raw)
-# plot(age_recid$p_current_age, log(age_recid$p_recid_raw+5))
-
-exp.recid <- lm(log(p_recid_raw+5)~ p_current_age,age_recid )
-plot(age_recid$p_current_age, age_recid$p_recid_raw,ylim=c(-5,-1))
-lines(age_recid$p_current_age, exp(predict(exp.recid, age_recid))-5,lwd=2, col = "blue", xlab = "p_current_age", ylab = "Recid Raw Score")
-
-
-recid_features=features%>%
-                    mutate(exp_age=predict(exp.recid, features))
-
-ggplot(recid_features, aes(x=p_current_age, y=p_recid_raw)) +
-     geom_point(shape=1)  +
-     geom_line(aes(x=p_current_age, y=exp_age))+
-     ggtitle("Risk of Recidivism Raw vs Current Age")
-
-
-###
-cf_recid=exp.recid%>% #cf stands for coefficients
-       coef()%>%
-       as.vector()
-    exp_recid_func=function(x){exp(cf[2]*x+cf[1])-5} #x=age
+age_poly_recid = function(x){0.000492285131636128000*x^2 - 0.0775341320826139000*x + 0.0305011936304372000}
 
 #plotting the regression line on top of ALL points
-ggplot(recid_features, aes(x=p_current_age, y=p_recid_raw)) +
+ggplot(features, aes(x=p_current_age, y=Risk.of.Recidivism_raw_score)) +
      geom_point(shape=1)  +
-     ggtitle("Regression Line Age vs Violence Score") +
-     stat_function(fun = exp_recid_func, colour="blue") +  
-     xlim(18,70)
+     ggtitle("Age at Current Screening vs COMPAS Recidivism\nScore (modelled with quadratic polynomial)") +
+     stat_function(fun = age_poly_recid, colour="blue",size=1.3) +  
+     xlim(18,70) +
+     xlab("Age at Current Screening") +
+     ylab("Risk of Recidivism Raw")+
+     theme(text=element_text(size=17),
+           axis.ticks=element_line(size=1),
+           axis.ticks.length = unit(3, "mm"))
 
-######
+```
+
+Plot of number of misdemeanors vs compas "remainder"
+```{r}
+ggplot(features, aes(x=pmin(p_jail30,5),
+                     y=Risk.of.Recidivism_raw_score-age_poly_recid(p_current_age))) +
+     geom_point(shape=1)  +
+     xlab("\n30 day Jail Visits per Person") +
+     ylab("COMPAS General Recidivism Remainde\nr")+
+     xlim(0,5)+
+     theme(text=element_text(size=17),
+           axis.ticks=element_line(size=1),
+           axis.ticks.length = unit(3, "mm"))
+
+ggplot(features, aes(x=p_arrest,
+                     y=Risk.of.Recidivism_raw_score-age_poly_recid(p_current_age))) +
+     geom_point(shape=1)  +
+     xlab("\nArrests per Person") +
+     ylab("COMPAS General Recidivism\nRemainder")+
+     xlim(0,25)+
+     theme(text=element_text(size=17),
+           axis.ticks=element_line(size=1),
+           axis.ticks.length = unit(3, "mm"))
+
+ggplot(features, aes(x=pmin(p_prison,5),
+                     y=Risk.of.Recidivism_raw_score-age_poly_recid(p_current_age))) +
+     geom_point(shape=1)  +
+     xlab("\nPrison Visits per Person") +
+     ylab("COMPAS General Recidivism Remainder\n")+
+     xlim(0,5)+
+     theme(text=element_text(size=17),
+           axis.ticks=element_line(size=1),
+           axis.ticks.length = unit(3, "mm"))
+
+ggplot(features, aes(x=p_probation,
+                     y=Risk.of.Recidivism_raw_score-age_poly_recid(p_current_age))) +
+     geom_point(shape=1)  +
+     xlab("\nProbation per Person") +
+     ylab("COMPAS General Recidivism Remainder\n")+
+     xlim(0,5)+
+     theme(text=element_text(size=17),
+           axis.ticks=element_line(size=1),
+           axis.ticks.length = unit(3, "mm"))
+
 
 
 
 ```
-
 
 
 

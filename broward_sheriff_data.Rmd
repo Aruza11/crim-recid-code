@@ -16,6 +16,7 @@ When you save the notebook, an HTML file containing the code and output will be 
 ```{r}
 library(tidyverse)
 library(magrittr)
+library(lubridate)
 setwd("C:/Users/Caroline Wang/OneDrive/Duke/Criminal Recidivism/crim-recid-code")
 
 ```
@@ -37,7 +38,55 @@ scattertbl2<-filter(pretrialscreen,DisplayText=="Risk of Recidivism")
 scattertbl3<-filter(pretrialscreen,DisplayText=="Risk of Failure to Appear")
 
 features<-read.csv("features.csv")
+#what we call age outliers (points under the age polynomial)
+#this csv is created in the violence_history.Rmd
+age_viol_outliers<-read.csv("violence_agepoly_outliers.csv")
+# Connect to the database
+db <- src_sqlite("compas-analysis/compas.db", create = TRUE)
+people_df<-tbl(db,"people")
+compas_df<-tbl(db,"compas")
 
+```
+
+Checking quality of age data w.r.t. Broward Sheriff data, specifically scattertbl1 (Risk of Violence scores)
+```{r}
+dfnew=select(compas_df,person_id, first, last,compas_person_id,)
+
+peoplenew=select(people_df,id,dob)%>%
+          rename(person_id=id)
+
+dfnew=left_join(dfnew, peoplenew, by="person_id")%>%
+      as_data_frame()
+
+checkages=scattertbl1%>%select(Person_ID, FirstName, LastName, DateOfBirth,Agency_Text)%>%
+      filter(Agency_Text=="PRETRIAL")%>%
+      filter(DateOfBirth!="00:00.0")%>%
+      rename(compas_person_id=Person_ID)%>%
+      left_join(dfnew,by="compas_person_id")%>%
+      mutate(DateOfBirth=mdy(DateOfBirth),
+             dob=as.Date(ymd_hms(dob))
+             )%>%
+      filter(!is.na(dob))%>%
+      filter(!is.na(DateOfBirth))%>%
+      select(first,last,compas_person_id,DateOfBirth,dob)
+
+age_bad=checkages%>%filter(dob!=DateOfBirth)%>%unique()
+nrow(age_bad) #23 people where the dob is off
+
+age_bad$DateOfBirth-age_bad$dob #max in terms of absolute value is 1096
+
+
+```
+
+Verifying that our age outliers ARE in the broward sheriff's data
+```{r}
+checkoutliers=age_viol_outliers%>%select(person_id)%>%
+                left_join(dfnew, by ="person_id" )
+
+checkoutliers$compas_person_id %in% scattertbl1$Person_ID
+
+scattertbl1%>%filter(Person_ID %in% checkoutliers$compas_person_id)%>%
+              select(Person_ID, LastName,FirstName,DateOfBirth)
 ```
 
 ```{r}
