@@ -102,17 +102,10 @@ v_lookup<-Vectorize(lookup_fn,vectorize.args = "x")
 
 ```
 
+
+Plotting a piecewise linear function to model the bottom edge of the violence_history subscale
 ```{r}
 #violence history
-linev2=bottom_edge%>%
-        filter(violence_history<=7)%>%
-        mutate(violence_history_jittered=ifelse(violence_history>=3,
-                                       violence_history+.5,
-                                       violence_history)
-        )
-            
-  
-  
 ggplot(train, aes(x=violence_history, 
                   y=violence_remainder,
                   colour = `Risk of Violence_raw_score` >= age_poly(p_current_age)
@@ -124,11 +117,6 @@ ggplot(train, aes(x=violence_history,
                aes(x=violence_history,
                    y=violence_remainder,
                    colour=violence_history<=7))+
-     # geom_line(data=linev2,
-     #           aes(x=violence_history_jittered,
-     #               y=violence_remainder,
-     #               colour=violence_history<=7))+
-    
      ggtitle("Filtered Version COMPAS Violent Recid\n  Age Remainder vs Violence History") +
      xlab("Total Violence History Items") +
      ylab("COMPAS Age Remainder")+

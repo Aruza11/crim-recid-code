@@ -1,6 +1,8 @@
 ---
 title: "Violence Score"
 output: html_notebook
+
+In this notebook we explore the relations in the violence_score data and also further examine the people on the bottom edge of the age vs compas score pt cloud
 ---
 
 ```{r setup, include=FALSE}
@@ -11,30 +13,71 @@ knitr::opts_chunk$set(warning=F, message=F,echo = TRUE)
 library(tidyverse)
 library(magrittr)
 
-features<-read.csv("features_vB.csv")
-```
+load("Table_construction.Rdata") #loading beau's version of data
 
+age_poly_viol =function(x){ 0.000000407808994851*x^4 - 0.000088176770770443*x^3 + 0.007436939324225960*x^2 - 0.316106532730131000*x + 1.553988869973560000}
+
+features_filt = features_before_on %>%
+  inner_join(
+    data_before %>% 
+      select(person_id, screening_date, people) %>%
+      unnest() %>%
+      select(person_id, screening_date, race, sex, name),
+    by = c("person_id","screening_date")
+  ) %>%
+  inner_join(features_on, by = c("person_id","screening_date")) %>%
+  inner_join(outcomes, by = c("person_id","screening_date")) %>%
+  filter(`Risk of Recidivism_decile_score` != -1, `Risk of Violence_decile_score` != -1) %>% # Filter 1
+  filter(!is.na(current_offense_date)) %>% # Filter 3
+  filter(screening_date <= current_offense_date_limit) %>% # Filter 4
+  mutate(recid_use = as.factor(recid_violent), 
+         # Select recidivism or violent recidivism to use in this script 
+         decile_use = `Risk of Violence_decile_score`) %>%
+        # Select recidivism or violent recidivism decile score to use in this script
+  filter(p_current_age>18 & p_current_age<=70) %>% #filter 5, age filter
+  filter(`Risk of Violence_raw_score` >= age_poly_viol(p_current_age) ) #filter age outliers (people beneath the age poly)
+   
+#round the count train 
+train = features_filt %>%
+  mutate(
+    #p_current_age,
+    p_age_first_offense,
+    p_juv_fel_count = pmin(p_juv_fel_count,2),
+    p_felprop_violarrest = pmin(p_felprop_violarrest,5),
+    p_murder_arrest = pmin(p_murder_arrest,3),
+    p_felassault_arrest = pmin(p_felassault_arrest,3),
+    p_misdemassault_arrest = pmin(p_misdemassault_arrest,3),
+    #p_famviol_arrest = pmin(p_famviol_arrest,3), #there are none
+    p_sex_arrest = pmin(p_sex_arrest,3),
+    p_weapons_arrest = pmin(p_weapons_arrest,3),
+    p_n_on_probation = pmin(p_n_on_probation,5),
+    p_current_on_probation = pmin(p_current_on_probation,5),
+    p_prob_revoke = pmin(p_prob_revoke,5),
+    violence_history=p_juv_fel_count+p_felprop_violarrest+
+                    p_murder_arrest+p_felassault_arrest+
+                    p_misdemassault_arrest +#p_famviol_arrest +
+                    p_sex_arrest+p_weapons_arrest,
+    history_noncomp=p_prob_revoke+p_probation+p_current_on_probation+p_n_on_probation,
+    violence_remainder=`Risk of Violence_raw_score`-age_poly_viol(p_current_age))
+
+```
 
 
 Risk of Violence
 Modelled age with a 4th degree polynomial. See broward_sheriff_data for our efforts to model it with a variety of exponentials (couldn't get it quite right so used a polynomial in the end).
 ```{r}
 
-age_subset=features%>%
-           # select(p_current_age, Risk.of.Violence_raw_score)%>%
+age_subset=train%>%
            filter(p_current_age>18&p_current_age<=70)%>%
            group_by(p_current_age)%>%
-              arrange(Risk.of.Violence_raw_score,.by_group=TRUE)%>%
-              top_n(n=-1,wt=Risk.of.Violence_raw_score)
+              arrange(`Risk of Violence_raw_score`,.by_group=TRUE)%>%
+              top_n(n=-1,wt=`Risk of Violence_raw_score`)
 # write.csv(age_subset, 'age_violence_score.csv')
 
-age_poly =function(x){ 0.000000407808994851*x^4 - 0.000088176770770443*x^3 + 0.007436939324225960*x^2 - 0.316106532730131000*x + 1.553988869973560000}
-
-
-ggplot(features, aes(x=p_current_age, y=Risk.of.Violence_raw_score)) +
+ggplot(train, aes(x=p_current_age, y=`Risk of Violence_raw_score`)) +
      geom_point(shape=1)  +
      ggtitle("Age at Current Screening vs COMPAS Violent\nRecidivism Score (modelled w/deg4 polynomial)") +
-     stat_function(fun = age_poly, colour="blue",size=1.3) +  
+     stat_function(fun = age_poly_viol, colour="blue",size=1.3) +  
      xlim(18,70)+
      xlab("Age at Current Screening") +
      ylab("Risk of Violent Recidivism Raw") +
@@ -43,17 +86,36 @@ ggplot(features, aes(x=p_current_age, y=Risk.of.Violence_raw_score)) +
            axis.ticks.length = unit(3, "mm"))
   
 
+```
+
+
+
+Examining people in age_subset (bottom edge of age_poly_viol vs COMPAS score pt cloud) more closely
+```{r}
+
+ggplot(age_subset, aes(x=p_current_age, y=`Risk of Violence_raw_score`)) +
+     geom_point(shape=1)  +
+     ggtitle("Risk of Violence Raw vs Age at Current Offense, age_subset")
+
+ggplot(age_subset, aes(x=violence_history, y=`Risk of Violence_raw_score`)) +
+     geom_point(shape=1)  +
+     ggtitle("Risk of Violence Raw vs Age at Current Offense, age_subset")
+
+ggplot(age_subset, aes(x=history_noncomp, y=`Risk of Violence_raw_score`)) +
+     geom_point(shape=1)  +
+     ggtitle("Risk of Violence Raw vs Age at Current Offense, age_subset")
+
+ggplot(age_subset, aes(x=p_age_first_offense, y=`Risk of Violence_raw_score`)) +
+     geom_point(shape=1)  +
+     ggtitle("Risk of Violence Raw vs Age at First Offense, age_subset")
+
 
 ```
 
-Score vs age at first offense
-Questions: 
-1) What causes that upturned corner when I plot age of first offense against the score_no_age? It's reminds me of effect of when I plotted the current age against a score corrected with the exponential regression (poorly fitted at low range)
-2) Why is there no explicit effect of p_current_age on the data? 
-3) No algorithmic difference between points which have diff=0 (2 possibilities: 2nd offense within same year as 1st, or this IS their first) and points which are 0<diff<=5
 
+Exploring relationship between COMPAS score and variables other than age
 ```{r}
-ggplot(features, aes(x=p_age_first_offense, y=`Risk.of.Violence_raw_score`)) +
+ggplot(train, aes(x=p_age_first_offense, y=`Risk of Violence_raw_score`)) +
      geom_point(shape=1)  +
      ggtitle("Risk of Violence Raw vs Age at First Offense")
 
@@ -66,7 +128,7 @@ ggplot(poly_noage, aes(x=p_age_first_offense, y=score_no_age)) +
      ggtitle("Risk of Violence Raw vs Age at First Offense, no current age")
 
 #checking the relationship b/w DISTANCE b/w ages, and score
-ggplot(poly_noage, aes(x=p_current_age-p_age_first_offense, y=`Risk.of.Violence_raw_score`)) +
+ggplot(poly_noage, aes(x=p_current_age-p_age_first_offense, y=`Risk of Violence_raw_score`)) +
      geom_point(shape=1)  +
      ggtitle("Risk of Violence Raw vs Current Age-Age at First Offense")
 
@@ -75,186 +137,68 @@ ggplot(poly_noage, aes(x=p_current_age-p_age_first_offense, y=score_no_age)) +
      ggtitle("Corrected Score vs Current Age-Age at First Offense")
 
 #looking at people at bottom edge of corrected score vs p_age_first_offense 
-bottom_age1=features%>%
+bottom_age1=train%>%
            group_by(p_age_first_offense)%>%
-              arrange(`Risk.of.Violence_raw_score`-age_poly(p_current_age),.by_group=TRUE)%>%
-              top_n(n=-1,wt=`Risk.of.Violence_raw_score`)
+              arrange(`Risk of Violence_raw_score`-age_poly_viol(p_current_age),.by_group=TRUE)%>%
+              top_n(n=-1,wt=`Risk of Violence_raw_score`)
 
-ggplot(bottom_age1, aes(x=p_age_first_offense, y=`Risk.of.Violence_raw_score`-age_poly(p_current_age))) +
+ggplot(bottom_age1, aes(x=p_age_first_offense, y=`Risk of Violence_raw_score`-age_poly_viol(p_current_age))) +
      geom_point(shape=1)  
 
 #looking at people in age_subset (bottom edge of age vs raw violence score relationship) and plotting against age_first_offense instead
-ggplot(age_subset, aes(x=p_current_age, y=`Risk.of.Violence_raw_score`)) +
+ggplot(age_subset, aes(x=p_current_age, y=`Risk of Violence_raw_score`)) +
      geom_point(shape=1)  +
      ggtitle("Risk of Violence Raw vs Age at Current Offense, age_subset")
 
-ggplot(age_subset, aes(x=p_age_first_offense, y=`Risk.of.Violence_raw_score`)) +
+ggplot(age_subset, aes(x=p_age_first_offense, y=`Risk of Violence_raw_score`)) +
      geom_point(shape=1)  +
      ggtitle("Risk of Violence Raw vs Age at First Offense, age_subset")
 
 ```
 
 
-Plotting bottom edge people against other stuff
-```{r}
-#simple sum of all other variables 
-bottom_edge=train%>%
-            filter(`Risk of Violence_raw_score` >= age_poly(p_current_age) ) %>% #filter outliers
-            # select(violence_history, violence_remainder)%>%
-            group_by(violence_history)%>%
-              arrange(violence_history,.by_group=TRUE)%>%
-              top_n(n=-1,wt=violence_remainder)%>%
-            unique()
-
-ggplot(train, aes(x=violence_history, 
-                  y=violence_remainder,
-                  colour = `Risk of Violence_raw_score` >= age_poly(p_current_age)
-                  )) +
-     scale_colour_manual(name = 'age_poly outliers', 
-                         values = setNames(c('black','red'),c(T, F)),guide=F) +
-     geom_point(shape=1)  +
-     geom_line(data=filter(bottom_edge,violence_history<=7),
-               aes(x=violence_history,
-                   y=violence_remainder,
-                   colour=violence_history<=7))+
-     # geom_line(data=linev2,
-     #           aes(x=violence_history_jittered,
-     #               y=violence_remainder,
-     #               colour=violence_history<=7))+
-    
-     ggtitle("Filtered Version COMPAS Violent Recid\n  Age Remainder vs Violence History") +
-     xlab("Total Violence History Items") +
-     ylab("COMPAS Age Remainder")+
-     xlim(0,15) +
-     theme(text=element_text(size=18),
-           axis.ticks=element_line(size=1),
-           axis.ticks.length = unit(3, "mm"))
-
-ggplot(bottom_edge, aes(x=violence_history,y=`Risk of Violence_raw_score`))+
-  geom_point()
-
-```
-
-
-Examining people in age_subset more closely
-```{r}
-#looking at people in age_subset (bottom edge of age vs raw violence score relationship) and plotting against age_first_offense instead
-
-ggplot(age_subset, aes(x=p_current_age, y=`Risk.of.Violence_raw_score`)) +
-     geom_point(shape=1)  +
-     ggtitle("Risk of Violence Raw vs Age at Current Offense, age_subset")
-
-ggplot(age_subset, aes(x=p_age_first_offense, y=`Risk.of.Violence_raw_score`)) +
-     geom_point(shape=1)  +
-     ggtitle("Risk of Violence Raw vs Age at First Offense, age_subset")
-
-ggplot(age_subset, aes(x=p_yrs5_felcount_person, y=`Risk.of.Violence_raw_score`)) +
-     geom_point(shape=1)  +
-     ggtitle("Risk of Violence Raw vs 5YrFelcount, age_subset")
-
-ggplot(age_subset, aes(x=p_misdem_count_5yrs, y=`Risk.of.Violence_raw_score`)) +
-     geom_point(shape=1)  +
-     ggtitle("Risk of Violence Raw vs 5YrMisdem, age_subset")
-
-ggplot(age_subset, aes(x=cq_fail_appear_two_yr+cq_fail_appear_two_plus, y=`Risk.of.Violence_raw_score`)) +
-     geom_point(shape=1)  +
-     ggtitle("Risk of Violence Raw vs Total Fail Appear, age_subset")
-
-#Interesting...almost perfect linear relatinoship
-ggplot(age_subset, aes(x=p_age_first_offense, y=p_current_age)) +
-     geom_point(shape=1)  +
-     ggtitle("Age at First Offense vs Current Age, age_subset")
-
-#Does this linear relationship hold for all observations? 
-ggplot(features, aes(x=p_age_first_offense, y=p_current_age)) +
-     geom_point(shape=1)  +
-     ggtitle("Age at First Offense vs Current Age, features")
-
-
-##########
-#Compare to bottom edge of age at first offense vs raw score
-bottom_age2=features%>%
-           group_by(p_age_first_offense)%>%
-              arrange(`Risk.of.Violence_raw_score`,.by_group=TRUE)%>%
-              top_n(n=-1,wt=`Risk.of.Violence_raw_score`)
-
-ggplot(bottom_age2, aes(x=p_age_first_offense, y=`Risk.of.Violence_raw_score`)) +
-     geom_point(shape=1)  +
-     ggtitle("Risk of Violence Raw vs Age at First Offense, bottom_age2")
-
-#Comparision
-ggplot(bottom_age2, aes(x=p_age_first_offense, y=`Risk.of.Violence_raw_score`)) +
-     geom_point(shape=1)  +
-     geom_point(data=age_subset, aes(x=p_age_first_offense, y=`Risk.of.Violence_raw_score`),shape=1, color="red") +
-     ggtitle("Risk of Violence Raw vs Age at First Offense, bottom_age2 and age_subset")
-
-ggplot(bottom_age2, aes(x=p_current_age, y=`Risk.of.Violence_raw_score`)) +
-     geom_point(shape=1)  +
-     ggtitle("Risk of Violence Raw vs Age at Current Offense, bottom_age2")
-
-#Comparison
-ggplot(bottom_age2, aes(x=p_current_age, y=`Risk.of.Violence_raw_score`)) +
-     geom_point(shape=1)  +
-     geom_point(data=age_subset, aes(x=p_current_age, y=`Risk.of.Violence_raw_score`),shape=1, color="red") +
-     ggtitle("Risk of Violence Raw vs Age at Current Offense, bottom_age2 and age_subset")
-
-
-ggplot(bottom_age2, aes(x=p_yrs5_felcount_person, y=`Risk.of.Violence_raw_score`)) +
-     geom_point(shape=1)  +
-     ggtitle("Risk of Violence Raw vs 5YrFelcount, bottom_age2")
-
-ggplot(bottom_age2, aes(x=p_misdem_count_5yrs, y=`Risk.of.Violence_raw_score`)) +
-     geom_point(shape=1)  +
-     ggtitle("Risk of Violence Raw vs 5YrMisdem, bottom_age2")
-
-ggplot(bottom_age2, aes(x=cq_fail_appear_two_yr+cq_fail_appear_two_plus, y=`Risk.of.Violence_raw_score`)) +
-     geom_point(shape=1)  +
-     ggtitle("Risk of Violence Raw vs Total Fail Appear, bottom_age2")
-
-
-```
 
 Trying to see the relationship between age at first offense and score, by looking at people who have only age contributing to their score (or as much so as possible)
 ```{r}
-offense1=features%>%
+offense1=train%>%
           group_by(p_current_age)%>%
-              arrange(`Risk.of.Violence_raw_score`,.by_group=TRUE)%>%
-              top_n(n=-5,wt=`Risk.of.Violence_raw_score`)%>%
+              arrange(`Risk of Violence_raw_score`,.by_group=TRUE)%>%
+              top_n(n=-5,wt=`Risk of Violence_raw_score`)%>%
               ungroup()%>%
           filter(p_felony_count_person==0&(cq_fail_appear_two_yr+cq_fail_appear_two_plus)==0)
 
 
-ggplot(offense1, aes(x=p_current_age, y=`Risk.of.Violence_raw_score`)) +
+ggplot(offense1, aes(x=p_current_age, y=`Risk of Violence_raw_score`)) +
      geom_point(shape=1)  +
-     geom_point(data=age_subset, aes(x=p_current_age, y=`Risk.of.Violence_raw_score`),shape=1, color="red") +
+     geom_point(data=age_subset, aes(x=p_current_age, y=`Risk of Violence_raw_score`),shape=1, color="red") +
      ggtitle("Risk of Violence Raw vs Age at Current Offense, offense1")
 
 for(age in (18:60)){
   
   print(
-    ggplot(filter(offense1, p_current_age==age) , aes(x=p_age_first_offense, y=`Risk.of.Violence_raw_score`)) +
+    ggplot(filter(offense1, p_current_age==age) , aes(x=p_age_first_offense, y=`Risk of Violence_raw_score`)) +
      geom_point(shape=1)  +
      ggtitle(paste0("age=",age, ", offense1"))
   )
   
 }
 
-offense2=features%>%
+offense2=train%>%
           filter(p_felony_count_person==0&(cq_fail_appear_two_yr+cq_fail_appear_two_plus)==0
                  &p_current_age>40&p_age_first_offense<30)
 
-ggplot(offense2, aes(x=p_current_age, y=`Risk.of.Violence_raw_score`)) +
+ggplot(offense2, aes(x=p_current_age, y=`Risk of Violence_raw_score`)) +
      geom_point(shape=1)  +
-     geom_point(data=age_subset, aes(x=p_current_age, y=`Risk.of.Violence_raw_score`),shape=1, color="red") +
+     geom_point(data=age_subset, aes(x=p_current_age, y=`Risk of Violence_raw_score`),shape=1, color="red") +
      ggtitle("Risk of Violence Raw vs Age at Current Offense, offense1")
 
-ggplot(offense2, aes(x=p_age_first_offense, y=`Risk.of.Violence_raw_score`)) +
+ggplot(offense2, aes(x=p_age_first_offense, y=`Risk of Violence_raw_score`)) +
      geom_point(shape=1)  +
      ggtitle("Risk of Violence Raw vs Age at First Offense, offense1")
 
 for(age in (18:60)){
   print(
-    ggplot(filter(offense2, p_current_age==age) , aes(x=p_age_first_offense, y=`Risk.of.Violence_raw_score`)) +
+    ggplot(filter(offense2, p_current_age==age) , aes(x=p_age_first_offense, y=`Risk of Violence_raw_score`)) +
      geom_point(shape=1)  +
      ggtitle(paste0("age=",age, ", offense1"))
   )
@@ -266,7 +210,7 @@ for(age in (18:60)){
 
 Same as above, but with p_age_first_arrest
 ```{r}
-ggplot(features, aes(x=p_age_first_arrest, y=`Risk.of.Violence_raw_score`)) +
+ggplot(train, aes(x=p_age_first_arrest, y=`Risk of Violence_raw_score`)) +
      geom_point(shape=1)  +
      ggtitle("Risk of Violence Raw vs Age at First Arrest")
 
@@ -279,7 +223,7 @@ ggplot(poly_noage, aes(x=p_age_first_arrest, y=score_no_age)) +
      ggtitle("Risk of Violence Raw vs Age at First Arrest, no current age")
 
 #checking the relationship b/w DISTANCE b/w ages, and score
-ggplot(poly_noage, aes(x=p_current_age-p_age_first_arrest, y=`Risk.of.Violence_raw_score`)) +
+ggplot(poly_noage, aes(x=p_current_age-p_age_first_arrest, y=`Risk of Violence_raw_score`)) +
      geom_point(shape=1)  +
      ggtitle("Risk of Violence Raw vs Current Age-Age at First Arrest")
 
@@ -287,15 +231,15 @@ ggplot(poly_noage, aes(x=p_current_age-p_age_first_arrest, y=score_no_age)) +
      geom_point(shape=1)  +
      ggtitle("Corrected Score vs Current Age-Age at First Arrest")
 
-first_arrest_low=features%>%
-                   mutate(score_no_age=`Risk.of.Violence_raw_score`-age_poly(p_current_age))%>%
+first_arrest_low=train%>%
+                   mutate(score_no_age=`Risk of Violence_raw_score`-age_poly_viol(p_current_age))%>%
                    # filter(p_age_first_arrest<=20)%>%
                    filter(p_current_age!=p_age_first_arrest)%>%
                    filter(p_felprop_violarrest==0&p_misdemassault_arrest<=3&p_felassault_arrest==0
                           &p_murder_arrest==0&p_famviol_arrest==0&p_sex_arrest==0
                           &p_yrs5_felcount_person<=1&p_misdem_count_5yrs<=3&cq_fail_appear_two_yr<=3)
 
-ggplot(first_arrest_low, aes(x=p_age_first_arrest, y=`Risk.of.Violence_raw_score`))+
+ggplot(first_arrest_low, aes(x=p_age_first_arrest, y=`Risk of Violence_raw_score`))+
   geom_point(shape=1)+
   ggtitle("Raw Score vs p_age_first_arrest, xlim<=20, no age=age@ first arrest")
 
@@ -306,12 +250,12 @@ ggplot(first_arrest_low, aes(x=p_age_first_arrest, y=score_no_age))+
 
 
 ```{r}
-ggplot(features, aes(x=p_yrs5_trafcount_person, y=`Risk.of.Violence_raw_score`-age_poly(p_current_age)))+
+ggplot(train, aes(x=p_yrs5_trafcount_person, y=`Risk of Violence_raw_score`-age_poly_viol(p_current_age)))+
   geom_point(shape=1)+
   ggtitle("Corrected Score vs 5 Yr Traffic")
 
 #xlim to 3 b/c can only log on compas assessment as 0,1,2,3+
-ggplot(features, aes(x=p_felassault_arrest, y=`Risk.of.Violence_raw_score`-age_poly(p_current_age)))+
+ggplot(train, aes(x=p_felassault_arrest, y=`Risk of Violence_raw_score`-age_poly_viol(p_current_age)))+
   geom_point(shape=1)+
   xlim(0,5)+ ylim(-1.5,3)+
   ggtitle("Corrected Score vs p_felassault_arrest")
@@ -321,8 +265,8 @@ ggplot(features, aes(x=p_felassault_arrest, y=`Risk.of.Violence_raw_score`-age_p
 
 
 ```{r}
-data_num=features%>%
-                select(person_id,`Risk.of.Violence_raw_score`,p_recid_raw,p_fail_to_appear_raw,
+data_num=train%>%
+                select(person_id,`Risk of Violence_raw_score`,p_recid_raw,p_fail_to_appear_raw,
                        p_current_age,cq_fail_appear_two_yr,cq_fail_appear_two_plus,
                        p_yrs5_felcount_person, p_felony_count_person,cq_prior_conviction_F,
                        p_misdem_count_5yrs,p_misdem_count_person,cq_prior_conviction_M,
@@ -336,7 +280,7 @@ data_num=features%>%
                        p_numcases
                        )%>%
   
-                mutate(corrected_age=age_poly(p_current_age))
+                mutate(corrected_age=age_poly_viol(p_current_age))
 
 write.csv(data_num,"data_num.csv")
 
@@ -346,15 +290,15 @@ write.csv(data_num,"data_num.csv")
 Comparing generated COMPAS score vs original compas score 
 With subtracted off age scores 
 ```{r}
-predicted_COMPAS=features%>%
+predicted_COMPAS=train%>%
                   mutate(total_fail_appear=cq_fail_appear_two_yr+cq_fail_appear_two_plus,
-                         corrected_age=age_poly(p_current_age)
+                         corrected_age=age_poly_viol(p_current_age)
 )
 
 #idea: limit the ranges of the variables in the history of violence scales to the multiple choice answers in the assessment
-predicted_COMPAS_xlim=features%>%
+predicted_COMPAS_xlim=train%>%
                       mutate(total_fail_appear=cq_fail_appear_two_yr+cq_fail_appear_two_plus,
-                             corrected_age=age_poly(p_current_age),
+                             corrected_age=age_poly_viol(p_current_age),
                              p_felprop_violarrest=ifelse(p_felprop_violarrest>5,5,p_felprop_violarrest),
                              p_juv_fel_count=ifelse(p_juv_fel_count>2,2,p_juv_fel_count),
                              p_felassault_arrest=ifelse(p_felassault_arrest>3,3,p_felassault_arrest),
@@ -366,197 +310,5 @@ predicted_COMPAS_xlim=features%>%
                              p_weapons_arrest=ifelse(p_weapons_arrest>3,3,p_weapons_arrest),
                              total_fail_appear=ifelse(total_fail_appear>5,5,total_fail_appear)
                              )
-```
-#################################3
-Alternative auto-gen approach 
-
-Directly generating a linear regression using the converted age 
-```{r}
-total_linear.model <- lm(`Risk.of.Violence_raw_score`~ 
-                              corrected_age+
-                              p_age_first_offense+
-                              p_felprop_violarrest+
-                              p_juv_fel_count+
-                              p_felassault_arrest+
-                              p_misdemassault_arrest+
-                              p_murder_arrest+
-                              p_famviol_arrest+
-                              p_sex_arrest+
-                              p_weapons_arrest+
-                              total_fail_appear, 
-                         predicted_COMPAS)
-
-total_linear.model2 <- lm(`Risk.of.Violence_raw_score`~ 
-                              corrected_age+
-                              p_age_first_offense+
-                              p_felprop_violarrest+
-                              p_juv_fel_count+
-                              p_felassault_arrest+
-                              p_misdemassault_arrest+
-                              p_murder_arrest+
-                              p_famviol_arrest+
-                              p_sex_arrest+
-                              p_weapons_arrest+
-                              total_fail_appear, 
-                         predicted_COMPAS_xlim)
-
-total_linear.model3 <- lm(`Risk.of.Violence_raw_score`~ 
-                              corrected_age+
-                              p_drug_count_5yrs+
-                              p_yrs5_felcount_person+
-                              p_misdem_count_5yrs+
-                              total_fail_appear, 
-                         predicted_COMPAS)
-
-predicted_COMPAS=predicted_COMPAS%>%
-                    mutate(lin_reg_total=predict(total_linear.model,.),
-                           
-                           lin_reg_total2=predict(total_linear.model2,.),
-                           lin_reg_total3=predict(total_linear.model3,.)
-                    )
-
-
-ggplot(predicted_COMPAS, aes(x=`Risk.of.Violence_raw_score`, y=lin_reg_total)) +
-        geom_point(shape=1)  +
-        annotate(x=1.5, y=1.5, label=round(cor(predicted_COMPAS$lin_reg_total,
-                                               predicted_COMPAS$`Risk.of.Violence_raw_score`
-                                               ),2), 
-                 geom="text")+
-        ggtitle("Predicted Violence Score vs Actual V1 (New)")
-
-
-ggplot(predicted_COMPAS, aes(x=`Risk.of.Violence_raw_score`, y=lin_reg_total2)) +
-        geom_point(shape=1)  +
-        annotate(x=1.5, y=1.5, label=round(cor(predicted_COMPAS$lin_reg_total,
-                                               predicted_COMPAS$`Risk.of.Violence_raw_score`
-                                               ),2), 
-                 geom="text")+
-        ggtitle("Predicted Violence Score vs Actual V2 (With xlim)")
-
-ggplot(predicted_COMPAS, aes(x=`Risk.of.Violence_raw_score`, y=lin_reg_total3)) +
-        geom_point(shape=1)  +
-        annotate(x=1.5, y=1.5, label=round(cor(predicted_COMPAS$lin_reg_total,
-                                               predicted_COMPAS$`Risk.of.Violence_raw_score`
-                                               ),2), 
-                 geom="text")+
-        ggtitle("Predicted Violence Score vs Actual V3 (Old)")
-
-
-```
-
-
-
-```{r}
-score_subset=predicted_COMPAS%>%
-                  filter(`Risk.of.Violence_raw_score`==-2)
-  
-ggplot(score_subset, aes(x=`Risk.of.Violence_raw_score`, y=lin_reg_total2)) +
-        geom_point(shape=1)  +
-        ggtitle("Raw Violence Score=-2")
-  
-ggplot(score_subset, aes(x=p_current_age, y=lin_reg_total2)) +
-        geom_point(shape=1)  +
-        ggtitle("Raw Violence Score=-2, Predicted Score vs Age")
-
-ggplot(score_subset, aes(x=p_current_age, y=`Risk.of.Violence_raw_score`)) +
-        geom_point(shape=1)  +
-        ggtitle("Raw Violence Score=-2, real Score vs Age")
-                  
- 
-#WHat does this age poly actually do? Is it correct to just apply it to age and graph that? 
-ggplot(features, aes(x=p_current_age, y=`Risk.of.Violence_raw_score`-age_poly(p_current_age))) +
-        geom_point(shape=1)  +
-        ggtitle("Violence Raw and Current Age")
-
-  
-ggplot(features, aes(x=age_poly(p_current_age), y=`Risk.of.Violence_raw_score`)) + #is linearizing correctly
-        geom_point(shape=1)  +
-        ggtitle("Violence Raw and Age_poly(Current Age)")
-
-#######
-# same as above using features2
-# score_subset2=features2%>%
-#                   filter(`Risk.of.Violence_raw_score`==-2)
-#   
-# ggplot(score_subset2, aes(x=`Risk.of.Violence_raw_score`, y=bottom_edge_pred)) +
-#         geom_point(shape=1)  +
-#         ggtitle("Raw Violence Score=-2")
-#   
-# ggplot(score_subset2, aes(x=p_current_age, y=bottom_edge_pred)) +
-#         geom_point(shape=1)  +
-#         ggtitle("Raw Violence Score=-2, Predicted Score vs Age")
-# 
-# ggplot(score_subset2, aes(x=p_current_age, y=`Risk.of.Violence_raw_score`)) +
-#         geom_point(shape=1)  +
-#         ggtitle("Raw Violence Score=-2, real Score vs Age")
-                  
-```
-Idea: generate multiple linear regression using the subset of the "bottom edge" of all the linear relationships. 
-```{r}
-#no filtering of columns
-features2=features%>%
-           mutate(corrected_age=age_poly(p_current_age), 
-                  total_fail_appear=cq_fail_appear_two_yr+cq_fail_appear_two_plus
-                  )
-
-age_bottom=features2%>%
-           filter(p_current_age>18&p_current_age<=70)%>%
-           group_by(corrected_age)%>%
-              arrange(`Risk.of.Violence_raw_score`,.by_group=TRUE)%>%
-              top_n(n=-1,wt=`Risk.of.Violence_raw_score`)
-
-drug_bottom=features2%>%
-            group_by(p_drug_count_5yrs)%>%
-              arrange(`Risk.of.Violence_raw_score`,.by_group=TRUE)%>%
-              top_n(n=-1,wt=`Risk.of.Violence_raw_score`)
-
-fel5_bottom=features2%>%
-            group_by(p_yrs5_felcount_person)%>%
-              arrange(`Risk.of.Violence_raw_score`,.by_group=TRUE)%>%
-              top_n(n=-1,wt=`Risk.of.Violence_raw_score`)
-
-misdem5_bottom=features2%>%
-              group_by(p_misdem_count_5yrs)%>%
-              arrange(`Risk.of.Violence_raw_score`,.by_group=TRUE)%>%
-              top_n(n=-1,wt=`Risk.of.Violence_raw_score`)
-
-fail_bottom=features2%>%
-              group_by(total_fail_appear)%>%
-              arrange(`Risk.of.Violence_raw_score`,.by_group=TRUE)%>%
-              top_n(n=-1,wt=`Risk.of.Violence_raw_score`)
-
-
-bottom_edge_subset<-bind_rows(age_bottom, drug_bottom, fel5_bottom, misdem5_bottom, fail_bottom)
-# View(bottom_edge_subset)
-
-bottom_edge.model <- lm(`Risk.of.Violence_raw_score`~corrected_age+p_drug_count_5yrs+
-                                       p_yrs5_felcount_person+p_misdem_count_5yrs+
-                                       total_fail_appear, 
-                        bottom_edge_subset)
-
-features2=features2%>%
-              mutate(bottom_edge_pred=predict(bottom_edge.model, features2))
-
-#old 
-ggplot(predicted_COMPAS, aes(x=`Risk.of.Violence_raw_score`, y=lin_reg_total)) +
-        geom_point(shape=1)  +
-        xlim(-4.5,0)+ylim(-4,0)+
-        annotate(x=1.5, y=1.5, label=round(cor(predicted_COMPAS$lin_reg_total,
-                                               predicted_COMPAS$`Risk.of.Violence_raw_score`
-                                               ),2), 
-                 geom="text")+
-        ggtitle("Predicted Violence Score (Old method)")
-
-#new 
-ggplot(features2, aes(x=`Risk.of.Violence_raw_score`, y=bottom_edge_pred)) +
-        geom_point(shape=1)  +
-        xlim(-4.5,0)+ylim(-4,0)+
-
-        annotate(x=1.5, y=1.5, label=round(cor(features2$bottom_edge_pred,
-                                               features2$`Risk.of.Violence_raw_score`
-                                               ),2), 
-                 geom="text")+
-        ggtitle("Bottom Edge Predicted Violence Score vs Actual Violence Score")
-
 ```
 
