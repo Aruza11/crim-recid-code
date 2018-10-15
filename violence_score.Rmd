@@ -2,7 +2,7 @@
 title: "Violence Score"
 output: html_notebook
 
-In this notebook we explore the relations in the violence_score data and also further examine the people on the bottom edge of the age vs compas score pt cloud
+purpose: In this notebook we explore the relations in the violence_score data and also further examine the people on the bottom edge of the age vs compas score pt cloud
 ---
 
 ```{r setup, include=FALSE}
@@ -92,7 +92,7 @@ ggplot(train, aes(x=p_current_age, y=`Risk of Violence_raw_score`)) +
 
 Examining people in age_subset (bottom edge of age_poly_viol vs COMPAS score pt cloud) more closely
 ```{r}
-
+#confirming that we have selected the "lower bound" observations
 ggplot(age_subset, aes(x=p_current_age, y=`Risk of Violence_raw_score`)) +
      geom_point(shape=1)  +
      ggtitle("Risk of Violence Raw vs Age at Current Offense, age_subset")
@@ -108,6 +108,63 @@ ggplot(age_subset, aes(x=history_noncomp, y=`Risk of Violence_raw_score`)) +
 ggplot(age_subset, aes(x=p_age_first_offense, y=`Risk of Violence_raw_score`)) +
      geom_point(shape=1)  +
      ggtitle("Risk of Violence Raw vs Age at First Offense, age_subset")
+
+
+```
+
+
+Histograms displaying count of people in the age_subset with violence_history scores of "x"
+```{r}
+
+#history of violence histogram
+ggplot(age_subset, aes(x=violence_history)) +
+     geom_histogram()  +
+     ggtitle("Distribution of Summed History of Violence Subscale Items\nfor Individuals on Lower Bound of age_poly")
+
+#comparison histogram for all individuals
+ggplot(train, aes(x=violence_history)) +
+     geom_histogram()  +
+     ggtitle("Distribution of Summed History of Violence Subscale Items\nfor All Individuals")
+
+
+#history of noncompliance histogram
+ggplot(age_subset, aes(x=history_noncomp)) +
+     geom_histogram()  +
+     ggtitle("Distribution of Summed History of Noncompliance Subscale Items\nfor Individuals on Lower Bound of age_poly")
+
+#comparison histogram for all individuals
+ggplot(train, aes(x=history_noncomp)) +
+     geom_histogram()  +
+     ggtitle("Distribution of Summed History of Noncompliance Subscale Items\nfor All Individuals")
+
+```
+Histograms breaking down the distribution of subscale components for individuals on bottom edge (vs all individuals)
+```{r}
+#subset of 38 people
+age_subset_long=age_subset%>%
+               select(violence_history,person_id,p_juv_fel_count,p_felprop_violarrest,
+                      p_murder_arrest,p_felassault_arrest,
+                      p_misdemassault_arrest,#p_famviol_arrest 
+                      p_sex_arrest,p_weapons_arrest)%>%
+               filter(violence_history==2 | violence_history==1)%>%
+               gather(violence_history_component,component_count,p_juv_fel_count:p_weapons_arrest,factor_key = T)%>%
+               group_by(violence_history, violence_history_component)%>%
+                  summarise(comp_sum = sum(component_count))
+
+
+ggplot(age_subset_long, aes(x=violence_history_component, 
+                            y=comp_sum,fill = as.character(violence_history))) +
+      geom_bar(stat="identity", position=position_dodge())+
+      # geom_bar(stat="identity", fill = "steelblue")+
+      ggtitle("Distribution of Violence History Subscale Items\nfor Individuals' Violence History") + 
+      xlab("Components") + 
+      ylab("Count of Components") + 
+      scale_fill_discrete(name = "Violence history scores")+ 
+      scale_fill_brewer(palette="Paired")+
+
+      theme_minimal() + 
+      theme(axis.text.x = element_text(angle = 45, vjust=1,hjust=1)) 
+
 
 
 ```

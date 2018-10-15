@@ -90,7 +90,43 @@ ggplot(age_recid, aes(x=subscale_crim_involvement, y=`Risk of Recidivism_raw_sco
 
 ```
 
+Criminal involvement subscale histograms
+```{r}
+ggplot(age_recid, aes(x=subscale_crim_involvement)) +
+     geom_histogram()  +
+     ggtitle("Distribution of Summed Criminal Involvement Subscale Items\nfor Individuals on Lower Bound of age_poly")
 
+ggplot(train, aes(x=subscale_crim_involvement)) +
+     geom_histogram()  +
+     ggtitle("Distribution of Summed Criminal Involvement Subscale Items\nfor All Individuals")
+
+```
+
+
+Criminal involvement subscale components
+```{r}
+age_recid_long=age_recid%>%
+              filter(subscale_crim_involvement<=7)%>%
+               gather(crim_involve_comp,component_count,
+                      p_charge:p_probation,factor_key = T)%>%
+               group_by(subscale_crim_involvement, crim_involve_comp)%>%
+                  summarise(comp_sum = sum(component_count))
+
+
+ggplot(age_recid_long, aes(x=crim_involve_comp, 
+                            y=comp_sum,fill = as.character(subscale_crim_involvement))) +
+      geom_bar(stat="identity", position=position_dodge())+
+      # geom_bar(stat="identity", fill = "steelblue")+
+      ggtitle("Distribution of Criminal Involvement Subscale Items\nfor Individuals' making up General Recid age_poly") + 
+      xlab("Components") + 
+      ylab("Count of Components")+
+      scale_fill_discrete(name = "Criminal Involvement scores")+ 
+     scale_fill_brewer(palette="PuBu")+
+      theme_minimal() + 
+      theme(axis.text.x = element_text(angle = 45, vjust=1,hjust=1)) 
+
+
+```
 
 ```{r}
 #Risk of Recidivism vs Age: p_current_age
