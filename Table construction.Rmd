@@ -21,10 +21,10 @@ source('functions.R')
 ### Local file paths
 
 # ProPublica analysis
-f_propub = "Raw_data/compas-analysis/"
+f_propub = "../compas-analysis-master/"
 
 # Data we have pulled
-f_our_data = "Raw_data/probation/"
+f_our_data = "../../broward-data/"
 ```
 
 ```{r}
@@ -436,7 +436,7 @@ outcomes = pmap_dfr(data_after, .f=compute_outcomes)
 ## Save
 
 ```{r}
-save(data_before, data_on, data_after, 
+save(data_before, data_on, data_after, data_before_on,
      features, features_before_on, features_on, outcomes,  
      compas_df_wide,
      current_offense_date_limit,

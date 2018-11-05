@@ -1,3 +1,118 @@
+compute_features = function(person_id,screening_date,first_offense_date,current_offense_date,
+                            arrest,charge,jail,prison,prob,people) {
+  ### Computes features (e.g., number of priors) for each person_id/screening_date.
+  
+  # pmap coerces dates to numbers so convert back to date.
+  first_offense_date = as_date(first_offense_date)
+  screening_date = as_date(screening_date)
+  current_offense_date = as_date(current_offense_date) 
+  
+  out = list()
+  
+  ### ID information
+  out$person_id = person_id
+  out$screening_date = screening_date
+  
+  ### Other features
+  
+  # Number of felonies
+  out$p_felony_count_person = ifelse(is.null(charge), 0, sum(charge$is_felony, na.rm = TRUE))
+  
+  # Number of misdemeanors
+  out$p_misdem_count_person  = ifelse(is.null(charge), 0, sum(charge$is_misdem, na.rm = TRUE))
+  
+  # Number of violent charges
+  out$p_charge_violent  = ifelse(is.null(charge), 0, sum(charge$is_violent, na.rm = TRUE))
+  
+  #p_current_age: Age at screening date
+  out$p_current_age = floor(as.numeric(as.period(interval(people$dob,screening_date)), "years"))
+  
+  #p_age_first_offense: Age at first offense 
+  out$p_age_first_offense = floor(as.numeric(as.period(interval(people$dob,first_offense_date)), "years"))
+  
+  ### History of Violence
+  
+  #p_juv_fel_count
+  #out$p_juv_fel_count = ifelse(is.null(people), 0, people$juv_fel_count)
+  out$p_juv_fel_count = ifelse(is.null(charge), 0, sum(charge$is_felony & charge$is_juv,na.rm=TRUE))
+  
+  #p_felprop_violarrest
+  out$p_felprop_violarrest = ifelse(is.null(charge), 0,sum(charge$is_felprop_violarrest, na.rm = TRUE))
+  
+  #p_murder_arrest
+  out$p_murder_arrest = ifelse(is.null(charge), 0, sum(charge$is_murder, na.rm = TRUE))
+  
+  #p_felassault_arrest
+  out$p_felassault_arrest = ifelse(is.null(charge), 0, sum(charge$is_felassault_arrest, na.rm = TRUE))
+  
+  #p_misdemassault_arrest
+  out$p_misdemassault_arrest = ifelse(is.null(charge), 0, sum(charge$is_misdemassault_arrest, na.rm = TRUE))
+  
+  #p_famviol_arrest
+  out$p_famviol_arrest = ifelse(is.null(charge), 0, sum(charge$is_family_violence, na.rm = TRUE))
+  
+  #p_sex_arrest
+  out$p_sex_arrest = ifelse(is.null(charge), 0, sum(charge$is_sex_offense, na.rm = TRUE))
+  
+  #p_weapons_arrest
+  out$p_weapons_arrest =  ifelse(is.null(charge), 0, sum(charge$is_weapons, na.rm = TRUE))
+  
+  ### History of Non-Compliance
+  
+  # Number of offenses while on probation
+  out$p_n_on_probation = ifelse(is.null(charge) | is.null(prob), 0, count_on_probation(charge,prob))
+  
+  # Whether or not current offense was while on probation (two ways)
+  if(is.null(prob)){
+    out$p_current_on_probation = 0
+  } else if(is.na(current_offense_date)) {
+    out$p_current_on_probation = NA
+  } else {
+    out$p_current_on_probation = if_else(count_on_probation(data.frame(offense_date=current_offense_date),prob)>0,1,0)
+  }
+  
+  # Number of times provation was violated or revoked
+  out$p_prob_revoke =  ifelse(is.null(prob), 0, sum(prob$is_revoke==1 & prob$EventDate < current_offense_date))
+  
+  ### Criminal Involvement
+  
+  # Number of charges / arrests
+  out$p_charge = ifelse(is.null(charge), 0, nrow(charge))
+  out$p_arrest = ifelse(is.null(arrest), 0, nrow(arrest))
+  
+  # Number of times sentenced to jail/prison 30 days or more
+  out$p_jail30 = ifelse(is.null(prison), 0, sum(jail$sentence_days >= 30, na.rm=TRUE))
+  out$p_prison30 = ifelse(is.null(prison), 0, sum(prison$sentence_days >= 30, na.rm=TRUE))
+  
+  # Number of prison sentences
+  out$p_prison =  ifelse(is.null(prison), 0, nrow(prison))
+  
+  # Number of times on probation
+  out$p_probation =  ifelse(is.null(prob), 0, sum(prob$prob_event=="On" & prob$EventDate < current_offense_date, na.rm = TRUE))
+  
+  return(out)
+}
+
+compute_features_on = function(person_id,screening_date,first_offense_date,current_offense_date,
+                               arrest,charge,jail,prison,prob,people) {
+  ### Computes features related to current offense
+  
+  # pmap coerces dates to numbers so convert back to date.
+  first_offense_date = as_date(first_offense_date)
+  screening_date = as_date(screening_date)
+  current_offense_date = as_date(current_offense_date) 
+  
+  out = list()
+  
+  ### ID information
+  out$person_id = person_id
+  out$screening_date = screening_date
+  
+  out$is_misdem = ifelse(is.null(charge), NA, if_else(any(charge$is_misdem==1) & all(charge$is_felony==0),1,0))
+  
+  return(out)
+}
+
 compute_outcomes = function(person_id,screening_date,first_offense_date,current_offense_date,
                             arrest,charge,jail,prison,prob,people){
   
@@ -38,96 +153,6 @@ compute_outcomes = function(person_id,screening_date,first_offense_date,current_
   
   return(out)
 }
-
-
-compute_features = function(person_id,screening_date,first_offense_date,current_offense_date,
-                            arrest,charge,jail,prison,prob,people) {
-  ### Computes features (e.g., number of priors) for each person_id/screening_date.
-  
-  # pmap coerces dates to numbers so convert back to date.
-  first_offense_date = as_date(first_offense_date)
-  screening_date = as_date(screening_date)
-  current_offense_date = as_date(current_offense_date) 
-  
-  out = list()
-  
-  ### ID information
-  out$person_id = person_id
-  out$screening_date = screening_date
-  
-  ### Other features
-  
-  # Number of felonies
-  out$p_felony_count_person = ifelse(is.null(charge), 0, sum(charge$is_felony, na.rm = TRUE))
-  
-  # Number of misdemeanors
-  out$p_misdem_count_person  = ifelse(is.null(charge), 0, sum(charge$is_misdem, na.rm = TRUE))
-  
-  
-  ### History of Violence
-  
-  #p_current_age: Age at screening date
-  out$p_current_age = floor(as.numeric(as.period(interval(people$dob,screening_date)), "years"))
-  
-  #p_age_first_offense: Age at first offense 
-  out$p_age_first_offense = floor(as.numeric(as.period(interval(people$dob,first_offense_date)), "years"))
-  
-  #p_juv_fel_count
-  out$p_juv_fel_count = ifelse(is.null(people), 0, people$juv_fel_count)
-  
-  #p_felprop_violarrest
-  out$p_felprop_violarrest = ifelse(is.null(charge), 0,sum(charge$is_felprop_violarrest, na.rm = TRUE))
-  
-  #p_murder_arrest
-  out$p_murder_arrest = ifelse(is.null(charge), 0, sum(charge$is_murder, na.rm = TRUE))
-  
-  #p_felassault_arrest
-  out$p_felassault_arrest = ifelse(is.null(charge), 0, sum(charge$is_felassault_arrest, na.rm = TRUE))
-  
-  #p_misdemassault_arrest
-  out$p_misdemassault_arrest = ifelse(is.null(charge), 0, sum(charge$is_misdemassault_arrest, na.rm = TRUE))
-  
-  #p_famviol_arrest
-  out$p_famviol_arrest = ifelse(is.null(charge), 0, sum(charge$is_family_violence, na.rm = TRUE))
-  
-  #p_sex_arrest
-  out$p_sex_arrest = ifelse(is.null(charge), 0, sum(charge$is_sex_offense, na.rm = TRUE))
-  
-  #p_weapons_arrest
-  out$p_weapons_arrest =  ifelse(is.null(charge), 0, sum(charge$is_weapons, na.rm = TRUE))
-  
-  ### History of Non-Compliance
-  
-  # Number of offenses while on probation
-  out$p_n_on_probation = ifelse(is.null(charge) | is.null(prob), 0, count_on_probation(charge,prob))
-  
-  # Whether or not current offense was while on probation
-  out$p_current_on_probation = ifelse(is.null(prob), 0, count_on_probation(data.frame(offense_date=current_offense_date),prob))
-  
-  # Number of times provation was violated or revoked
-  out$p_prob_revoke =  ifelse(is.null(prob), 0, sum(prob$Description=="File Order Of Revocation Of Probation"))
-  
-  ### Criminal Involvement
-  
-  # Number of charges / arrests
-  out$p_charge = ifelse(is.null(charge), 0, nrow(charge))
-  out$p_arrest = ifelse(is.null(arrest), 0, nrow(arrest))
-  
-  # Number of times sentenced to jail/prison 30 days or more
-  out$p_jail30 = ifelse(is.null(prison), 0, sum(jail$sentence_days >= 30, na.rm=TRUE))
-  out$p_prison30 = ifelse(is.null(prison), 0, sum(prison$sentence_days >= 30, na.rm=TRUE))
-  
-  # Number of prison sentences
-  out$p_prison =  ifelse(is.null(prison), 0, nrow(prison))
-  
-  # Number of times on probation
-  out$p_probation =  ifelse(is.null(prob), 0, sum(prob$prob_event=="On", na.rm = TRUE))
-  
-  
-  return(out)
-}
-
-
 
 count_on_probation = function(charge, prob){
   
@@ -184,92 +209,137 @@ classify_charge = function(event_before, days_before, event_after, days_after,
 }
 
 
+rmse = function(y, yhat) {
+  sqrt(mean((y-yhat)^2))
+}
 
-
-compare_cols <- function(df) {
-  # Fraction of non-missing rows that agree
+fit_xgboost <- function(train, param) {
+  ###
+  # Cross validates each combination of parameters in param and returns best model
+  # param is a list of xgboost parameters as vectors
+  # train is formatted for xgboost input
+  ###
   
-  # Check data type
-  df_class <- unique(unlist(sapply(df,class)))
+  param_df = expand.grid(param) # Each row is a set of parameters to be cross validated
+  n_param = nrow(param_df)
   
-  if (length(df_class)>1){
-    stop("Variables not of same class")
+  ## Allocate space for performance statistics (and set seeds)
+  performance = data.frame(
+    i_param = 1:n_param,
+    seed = sample.int(10000, n_param),
+    matrix(NA,nrow=2,ncol=5,
+           dimnames=list(NULL,
+                         c("iter","train_rmse_mean","train_rmse_std","test_rmse_mean","test_rmse_std"))))
+  col_eval_log = 3:7 # Adjust manually. Column index in performance of evaluation_log output from xgb.cv
+  
+  cat("Training on",n_param,"sets of parameters.\n")
+  
+  ## Loop through the different parameters sets
+  for (i_param in 1:n_param) {
+    
+    set.seed(performance$seed[i_param])
+    
+    mdcv = xgb.cv(data=train, 
+                  params = list(param_df[i_param,])[[1]], 
+                  nthread=6, 
+                  nfold=5, 
+                  nrounds=10000,
+                  verbose = FALSE, 
+                  early_stopping_rounds=50, 
+                  maximize=FALSE)
+    
+    performance[i_param,col_eval_log] = mdcv$evaluation_log[mdcv$best_iteration,]
   }
   
-  # Only use non NA rows
-  row_keep <- !(is.na(df[1]) | is.na(df[2]))
+  ## Train on best parameters using best number of rounds
+  i_param_best = performance$i_param[which.min(performance$test_rmse_mean)]
+  print(t(param_df[i_param_best,])) #Prints the best parameters
   
-  if (any(row_keep)) {
-    df_keep <- df[row_keep,]
+  set.seed(performance$seed[i_param_best])
+  
+  mdl_best = xgb.train(data=train, 
+                       params=list(param_df[i_param_best,])[[1]], 
+                       nrounds=performance$iter[i_param_best], 
+                       nthread=6)
+  
+  return(mdl_best)
+}
+
+
+fit_svm <- function(formula, train, param) {
+  ###
+  # Cross validates each combination of parameters in param and returns best model
+  # param is a list of svm parameters as vectors
+  # svm parameters are cost, epsilon, and gamma_scale (a scaling factor on the default gamma value)
+  # train is formatted for xgboost input
+  ###
+  
+  
+  param_df = expand.grid(param) # Each row is a set of parameters to be cross validated
+  n_param = nrow(param_df)
+  
+  ## Compute default gamma parameter
+  gamma_default = 1/ncol(train)
+  param_df = param_df %>%
+    mutate(gamma = gamma_scale * gamma_default)
+  
+  ## Make sure only one type parameter
+  if(length(param$type) == 1){
     
-    # Comparison is different depending on the class
-    # In all cases diff is a number between 0 and 1
-    # with smaller number indicating less difference
-    
-    if (df_class %in% c("integer","double")) {
-      # Average absolute difference
-      diff <- mean(abs(df_keep[,1] - df_keep[,2]))
-      
-      
-    } else if(df_class %in% c("Date","POSIXct","POSIXt")) {
-      # Average difference in days
-      diff <- mean(as.numeric(as.period(interval(as.Date(df_keep[,1]), 
-                                                 as.Date(df_keep[,2])), 
-                                        "days"), "days"))
-      
-    } else if(df_class %in% "character") {
-      # Fraction do not agree
-      diff <- mean(df_keep[,1] != df_keep[,2])
-      
-    } else {
-      stop("Variable class not recognized")
+    if(str_detect(param$type,'regression')){
+      reg_or_class = 'reg'
+    } else if (str_detect(param$type,'classification')) {
+      reg_or_class = 'class'
     }
-  } else {
-    diff <- 0
+  } else{
+    stop('Can only handle one type parameter')
   }
   
-  return(diff)
+  ## Allocate space for performance statistics (and set seeds)
+  performance = rep(NA,n_param)
   
-}
-
-
-compare_df <- function(df1, df2, by){
-  # Dark magic
-  by <- enquo(by)
+  cat("Training on",n_param,"sets of parameters.\n")
   
-  # Compares two dataframes on specified columns
-  out <- list()
+  ## Loop through the different parameters sets
+  for (i_param in 1:n_param) {
+    
+    mdcv = suppressWarnings(e1071::svm(formula = formula, 
+                                       data = train, 
+                                       type = param$type,
+                                       kernel = 'radial',
+                                       gamma = param_df$gamma[i_param],
+                                       epsilon = param_df$epsilon[i_param],
+                                       cost = param_df$cost[i_param],
+                                       cross = 5,
+                                       scale = TRUE))
+    
+    if(reg_or_class == "reg"){
+      performance[i_param] = mdcv$tot.MSE
+    } else if (reg_or_class == "class") {
+      performance[i_param] = mdcv$tot.accuracy
+    }
+    
+  }
   
-  # Compare columns
-  out[["cols_in1not2"]] <- setdiff(colnames(df1),colnames(df2))
-  out[["cols_in2not1"]] <- setdiff(colnames(df2),colnames(df1))
-  out[["cols_in1and2"]] <- intersect(colnames(df1),colnames(df2))
+  ## Train on best parameters using best number of rounds
+  if(reg_or_class == "reg"){
+    i_param_best = which.min(performance)
+  } else if (reg_or_class == "class") {
+    i_param_best = which.max(performance)
+  }
   
-  # Subset on shared rows and select columns
-  row_keep <- base::intersect(select(df1,!!by)[[1]],select(df2,!!by)[[1]])
-  out[["n_rows_compare"]] <- length(row_keep)
+  print("Best parameters:")
+  print(t(param_df[i_param_best,]))
   
-  df1 <- df1 %>%
-    filter((!!by) %in% row_keep) %>%
-    arrange(!!by)
+  mdl_best = suppressWarnings(e1071::svm(formula = formula, 
+                                         data = train, 
+                                         type = param$type,
+                                         kernel = 'radial',
+                                         gamma = param_df$gamma[i_param_best],
+                                         epsilon = param_df$epsilon[i_param_best],
+                                         cost = param_df$cost[i_param_best],
+                                         cross = 5,
+                                         scale = TRUE))
   
-  df2 <- df2 %>%
-    filter((!!by) %in% row_keep) %>%
-    arrange(!!by)
-  
-  # Convert time objects to date only
-  df1 <- df1 %>% mutate_if(is.POSIXt, funs(as.Date))
-  df2 <- df2 %>% mutate_if(is.POSIXt, funs(as.Date))
-  
-  out[["diff"]] <- sapply(out[["cols_in1and2"]], function(x) 
-    compare_cols(cbind(
-      df1[x],
-      df2[x]
-    )))
-  
-  return(out)
-}
-
-days_between <- function(d1,d2) {
-  as.numeric(as.period(interval(as.Date(d1), as.Date(d2)), "days"), "days")
+  return(mdl_best)
 }

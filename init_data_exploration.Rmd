@@ -3,10 +3,6 @@ title: "R Notebook"
 output: html_notebook
 ---
 
-This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
-
-Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Ctrl+Shift+Enter*. 
-
 setwd("C:/Users/Caroline Wang/OneDrive/Duke/Criminal Recidivism/crim-recid-code")
 ```{r}
 library(stringr)
@@ -21,7 +17,7 @@ library(reshape2)
 
 ```{r}
 # Connect to the database
-db <- src_sqlite("compas-analysis/compas.db", create = TRUE)
+db <- src_sqlite("../compas-analysis-master/compas.db", create = TRUE)
 
 # List all the tables
 table_names <- src_tbls(db)
@@ -38,8 +34,8 @@ people_df<-tbl(db,"people")
 ```
 
 ```{r}
-fta_prob<-read.csv("C:/Users/Caroline Wang/OneDrive/Duke/Criminal Recidivism/Data tables/fta_prob.csv")
-convictions<-read.csv("C:/Users/Caroline Wang/OneDrive/Duke/Criminal Recidivism/Data tables/convicted_from_disps.csv") 
+fta_prob<-read.csv("C:/Users/Caroline Wang/OneDrive/Duke/Criminal Recidivism/broward-data/fta_prob.csv")
+convictions<-read.csv("C:/Users/Caroline Wang/OneDrive/Duke/Criminal Recidivism/broward-data/convicted_from_disps.csv") 
 compas_scores<-compas_df%>%
                 select(person_id, type_of_assessment, raw_score, decile_score,screening_date)%>%
                 as_data_frame()
@@ -51,7 +47,7 @@ Writing individuals' compas score to file. *Note: some people have more than 1 s
 # compas_df%>%
     # select(person_id,person_id, first, last, type_of_assessment, raw_score, decile_score)%>%
     # as_data_frame()%>%
-    # write.csv("C:/Users/Caroline Wang/OneDrive/Duke/Criminal Recidivism/Data tables/compas_scores.csv")
+    # write.csv("C:/Users/Caroline Wang/OneDrive/Duke/Criminal Recidivism/broward-data/compas_scores.csv")
 ```
 
 Creating a new df from a subset of compas_df, altering names of some columns
@@ -156,10 +152,10 @@ dfnew$screening_date<-as.Date(dfnew$screening_date,format = "%Y-%m-%d %T") if co
 3) Some people are not in charge_df, so they get filtered out of dfnew in the final filter(beforeCOMPAS==1) (because they have NAs for the offense date, beforeCOMPAS==1). Perhaps I should try to get this information from the broward dataset? 
 4)count(dfnew):2279601
 
-Storing dfnew in Data tables folder
+Storing dfnew in broward-data folder
 Last wrote: 2/4/18; filtered s.t. beforeCOMPAS==1
 ```{r}
-#setwd("C:/Users/Caroline Wang/OneDrive/Duke/Criminal Recidivism/Data tables")
+#setwd("C:/Users/Caroline Wang/OneDrive/Duke/Criminal Recidivism/broward-data")
 # dfnew%>%as_data_frame()%>%
         # write.csv(dfnew,"dfnew.csv")
 ```
