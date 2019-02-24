@@ -2,16 +2,26 @@
 title: "recid_score"
 output: html_notebook
 ---
+purpose: In this notebook we explore the relations in the Risk of Recidivism data and also further examine the people on the bottom edge of the age vs compas score pt cloud
 
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(warning=F, message=F,echo = TRUE)
+```
 
 ```{r}
 library(tidyverse)
 library(magrittr)
+source('functions.r')
+
 load("Table_construction.Rdata") #loading beau's version of data
+```
 
-age_poly_recid = function(x){0.000492285131636128000*x^2 - 0.0775341320826139000*x + 0.0305011936304372000}
 
-features_filt = features_before_on %>%
+
+```{r}
+features = features %>%
+  # Add other useful information:
   inner_join(
     data_before %>% 
       select(person_id, screening_date, people) %>%
@@ -21,110 +31,250 @@ features_filt = features_before_on %>%
   ) %>%
   inner_join(features_on, by = c("person_id","screening_date")) %>%
   inner_join(outcomes, by = c("person_id","screening_date")) %>%
-  filter(`Risk of Recidivism_decile_score` != -1, `Risk of Violence_decile_score` != -1) %>% # Filter 1
-  filter(!is.na(current_offense_date)) %>% # Filter 3
-  filter(screening_date <= current_offense_date_limit) %>% # Filter 4
-  mutate(recid_use = as.factor(recid_violent), 
-         # Select recidivism or violent recidivism to use in this script 
-         decile_use = `Risk of Violence_decile_score`) %>%
-        # Select recidivism or violent recidivism decile score to use in this script
-  filter(p_current_age>18 & p_current_age<=70)%>% #filter 5, age filter
-  filter(`Risk of Recidivism_raw_score` >= age_poly_recid(p_current_age) ) #filter recid outliers
-   
-
-#round the count features, add some summed features 
-
-train = features_filt %>%
-  transmute(
-    p_current_age,
-    # p_age_first_offense,
-    p_charge,
+  
+  # Create as many features as possible:
+  mutate(
+    raw_score = `Risk of Recidivism_raw_score`, # Adjust for violent/general
+    decile_score = `Risk of Recidivism_decile_score`, # Adjust for violent/general
     p_jail30 = pmin(p_jail30,5),
+    p_prison30 = pmin(p_jail30,5),
     p_prison = pmin(p_prison,5),
     p_probation = pmin(p_probation,5),
-    subscale_crim_involvement = p_arrest+p_jail30+p_prison+p_probation,
-    `Risk of Recidivism_raw_score`
-    )
+    race_black = if_else(race=="African-American",1,0),
+    race_white = if_else(race=="Caucasian",1,0),
+    race_hispanic = if_else(race=="Hispanic",1,0),
+    race_asian = if_else(race=="Asian",1,0),
+    race_native = if_else(race=="Native American",1,0), # race == "Other" is the baseline
+    
+    # Subscales:
+    crim_inv = p_charge+
+      p_jail30+
+      p_prison+
+      p_probation,
+    
+    # Filters (TRUE for obserations to keep)
+    filt1 = `Risk of Recidivism_decile_score` != -1, `Risk of Violence_decile_score` != -1, # Filter 1
+    filt3 = !is.na(current_offense_date), # Filter 3
+    filt4 = current_offense_date <= current_offense_date_limit, # Filter 4
+    filt5 = p_current_age > 18 & p_current_age <= 70 # Filter 5
+  )
+```
 
+
+Modelling the COMPAS Risk of Recidivism score with a quadratic poly.
+```{r}
+features_f_age = features %>%
+  filter(filt1,filt5) %>%
+  select(p_current_age, raw_score)
+
+lb_age = features_f_age %>%
+  group_by(p_current_age) %>%
+  #arrange(raw_score, .by_group=TRUE) %>%
+  arrange(raw_score) %>%
+  top_n(n=-1, wt=raw_score) # Fit lower bound on smallest value
+mdl_age = lm(raw_score ~ 
+               I(p_current_age^2) + 
+               p_current_age, 
+             data=lb_age)
+
+# More precision for paper
+summary(mdl_age)
+
+print("Coefficients:")
+sprintf("%.20e",mdl_age$coefficients) # More precision for paper
+
+## Add f(age) to features
+features = features %>%
+  mutate(
+    f_age = predict(mdl_age, newdata=data.frame(p_current_age=p_current_age)),
+    raw_score__f_age = raw_score - f_age,
+    filt6 = raw_score >= f_age
+  )
+```
+
+
+Plot age poly found
+```{r}
+## Age polynomial plot
+xmin = 18
+xmax = 70
+xx = seq(xmin,xmax, length.out=1000)
+ggplot()+
+  geom_point(aes(x=p_current_age, raw_score), color="#619CFF",alpha=.3, data=features_f_age) +
+  geom_line(aes(x=xx, predict(mdl_age, newdata=data.frame(p_current_age=xx))),color="#F8766D") +
+  theme_bw()+
+  xlim(xmin,xmax)+
+  xlab("Age at COMPAS screening date") +
+  ylab("General score") +
+  theme(text = element_text(size=12),
+        axis.text=element_text(size=12),
+        legend.position="none")
+```
+
+
+Individuals on bottom edge
+```{r}
+
+#individuals on the lower bound of the age polynomial 
+lb_inds = features %>%
+  filter(filt1,filt5, filt6) %>% #individuals who have valid scores, 18 to 70, not below lower bound
+  group_by(p_current_age) %>%
+  arrange(raw_score) %>%
+  top_n(n=-1, wt=raw_score) # Fit lower bound on smallest value
+
+xmin = 18
+xmax = 70
+xx = seq(xmin,xmax, length.out=1000)
+
+ggplot()+
+  geom_point(aes(x=p_current_age, raw_score), color="#619CFF",alpha=.3, data=lb_inds) +
+  geom_line(aes(x=xx, predict(mdl_age, newdata=data.frame(p_current_age=xx))),color="#F8766D") +
+  theme_bw()+
+  xlim(xmin,xmax)+
+  xlab("Age at COMPAS screening date") +
+  ylab("Recidivism score") +
+  theme(text = element_text(size=12),
+        axis.text=element_text(size=12),
+        legend.position="none")
+
+nrow(lb_inds)
 ```
 
 
 
-```{r}
-age_recid=train%>%
-           # select(p_current_age, `Risk of Recidivism_raw_score`)%>%
-           filter(p_current_age>18&p_current_age<=70)%>%
-           group_by(p_current_age)%>%
-              arrange(`Risk of Recidivism_raw_score`,.by_group=TRUE)%>%
-              top_n(n=-1,wt=`Risk of Recidivism_raw_score`)
-# write.csv(age_recid,"age_recid.csv")
 
-ggplot(age_recid, aes(x=p_current_age, y=`Risk of Recidivism_raw_score`)) +
+Examining people in age_subset (bottom edge of age_poly vs COMPAS score pt cloud) more closely
+```{r}
+ggplot(lb_inds, aes(x=crim_inv, y=`Risk of Recidivism_raw_score`)) +
      geom_point(shape=1)  +
-     ggtitle("Regression Line Age vs Recid Score") +
-     xlim(18,70)
+     theme_bw()+
+     ggtitle("Risk of Violence Raw vs Summed Criminal Involvement")
 
-#plotting the regression line on top of ALL points
-ggplot(train, aes(x=p_current_age, y=`Risk of Recidivism_raw_score`)) +
+ggplot(lb_inds, aes(x=p_age_first_offense, y=`Risk of Recidivism_raw_score`)) +
      geom_point(shape=1)  +
-     ggtitle("Age at Current Screening vs COMPAS Recidivism\nScore (modelled with quadratic polynomial)") +
-     stat_function(fun = age_poly_recid, colour="blue",size=1.3) +  
-     xlim(18,70) +
-     xlab("Age at Current Screening") +
-     ylab("Risk of Recidivism Raw")+
-     theme(text=element_text(size=17),
-           axis.ticks=element_line(size=1),
-           axis.ticks.length = unit(3, "mm"))
+     theme_bw()+
+     ggtitle("Risk of Recid Raw vs Age at First Offense, age_subset")
+
+ggplot(lb_inds, aes(x=p_current_age - p_age_first_offense, y=`Risk of Recidivism_raw_score`)) +
+     geom_point(shape=1)  +
+     theme_bw()+
+     ggtitle("Risk of Recid Raw vs Current Age - Age at First Offense , age_subset")
 
 ```
 
-Exploring criminal histories of those in the bottom edge of the recidivism score
+Histograms displaying count of people in the age_subset with violence_history scores of "x"
 ```{r}
-ggplot(age_recid, aes(x=p_current_age, y=`Risk of Recidivism_raw_score`)) +
-     geom_point(shape=1)  
 
-ggplot(age_recid, aes(x=subscale_crim_involvement, y=`Risk of Recidivism_raw_score`)) +
-     geom_point(shape=1)  
-
-
-
-```
-
-Criminal involvement subscale histograms
-```{r}
-ggplot(age_recid, aes(x=subscale_crim_involvement)) +
+#crim involvement histogram
+ggplot(lb_inds, aes(x=crim_inv)) +
      geom_histogram()  +
      ggtitle("Distribution of Summed Criminal Involvement Subscale Items\nfor Individuals on Lower Bound of age_poly")
 
-ggplot(train, aes(x=subscale_crim_involvement)) +
+#comparison histogram for all individuals who are 18-70, have scores not -1, and are above lb
+ggplot(features%>%filter(filt1,filt5,filt6), 
+       aes(x=crim_inv)) +
      geom_histogram()  +
      ggtitle("Distribution of Summed Criminal Involvement Subscale Items\nfor All Individuals")
 
 ```
 
 
-Criminal involvement subscale components
+
+Question: of the crimes that people with a criminal involvement subscale sum of 1 or 2 committed, which ones were they?
+Criminal involvement subscale items:  p_charge, p_jail30, p_prison, p_probation
+
+As we can see from the plot below, the individuals on the lower bound who do have criminal history have never gone to jail for >30 days or prison. They do have 1 charge. 
 ```{r}
-age_recid_long=age_recid%>%
-              filter(subscale_crim_involvement<=7)%>%
-               gather(crim_involve_comp,component_count,
-                      p_charge:p_probation,factor_key = T)%>%
-               group_by(subscale_crim_involvement, crim_involve_comp)%>%
+age_subset_long=lb_inds%>%
+  
+               select(crim_inv,person_id,
+                      p_charge, 
+                      p_jail30, 
+                      p_prison,
+                      p_probation)%>%
+  
+               filter(crim_inv==2 | crim_inv==1 | crim_inv == 3)%>%
+               gather(crim_inv_component,component_count,p_charge:p_probation,factor_key = T)%>%
+               group_by(crim_inv, crim_inv_component)%>%
                   summarise(comp_sum = sum(component_count))
 
 
-ggplot(age_recid_long, aes(x=crim_involve_comp, 
-                            y=comp_sum,fill = as.character(subscale_crim_involvement))) +
+ggplot(age_subset_long, aes(x=crim_inv_component, 
+                            y=comp_sum,fill = as.character(crim_inv))) +
       geom_bar(stat="identity", position=position_dodge())+
-      # geom_bar(stat="identity", fill = "steelblue")+
-      ggtitle("Distribution of Criminal Involvement Subscale Items\nfor Individuals' making up General Recid age_poly") + 
-      xlab("Components") + 
-      ylab("Count of Components")+
+      ggtitle("Distribution of Criminal Involvement Subscale Items\nfor Individuals") + 
+      xlab("Criminal Involvement Subscale Components") + 
+      ylab("Count of Components") + 
       scale_fill_discrete(name = "Criminal Involvement scores")+ 
-     scale_fill_brewer(palette="PuBu")+
+      scale_fill_brewer(palette="Paired")+
+
       theme_minimal() + 
       theme(axis.text.x = element_text(angle = 45, vjust=1,hjust=1)) 
 
+```
+
+Examining the criminal history of individuals on the lower bound who had a criminal involvement subscale sum of 1. 
+Question: what were these people charged for?  
+```{r}
+lb_inds_crim_inv1 = lb_inds%>%
+       select(crim_inv,person_id,
+              p_charge, #only need to look at charges b/c these people have 0 of everything else
+              current_offense_date, 
+              first_offense_date, 
+              screening_date)%>%
+       filter(crim_inv==1)
+lb_inds_crim_inv1
+
+```
+
+
+```{r}
+lb_inds_crim_inv2 = lb_inds%>%
+       select(crim_inv,person_id,
+              p_charge,
+              current_offense_date, 
+              first_offense_date, 
+              screening_date)%>%
+       filter(crim_inv==2)
+lb_inds_crim_inv2
+
+```
+
+
+Filtering for individuals who have NO crim inv and seeing if this makes the lower bound clearer. There are 127 total individuals on the lower bound but when we perform this operation it leaves only 100. 
+```{r}
+inds_no_history = lb_inds %>% 
+    filter(crim_inv == 0)
+
+# nrow(inds_no_history) #100 inds
+
+xmin = 18
+xmax = 70
+xx = seq(xmin,xmax, length.out=1000)
+
+ggplot()+
+  geom_point(aes(x=p_current_age, raw_score), color="#619CFF",alpha=.3, data=inds_no_history) +
+  geom_line(aes(x=xx, predict(mdl_age, newdata=data.frame(p_current_age=xx))),color="#F8766D") +
+  theme_bw()+
+  ggtitle("Individuals with no prior criminal involvement")+
+  xlim(xmin,xmax)+
+  xlab("Age at COMPAS screening date") +
+  ylab("Recidivism score") +
+  theme(text = element_text(size=12),
+        axis.text=element_text(size=12),
+        legend.position="none")
+
+ggplot()+
+  geom_point(aes(x=p_current_age, raw_score), color="#619CFF",alpha=.3, data=lb_inds) +
+  geom_line(aes(x=xx, predict(mdl_age, newdata=data.frame(p_current_age=xx))),color="#F8766D") +
+  theme_bw()+
+  ggtitle("All individuals on the lower bound")+
+  xlim(xmin,xmax)+
+  xlab("Age at COMPAS screening date") +
+  ylab("Recidivism score") +
+  theme(text = element_text(size=12),
+        axis.text=element_text(size=12),
+        legend.position="none")
 
 ```
 

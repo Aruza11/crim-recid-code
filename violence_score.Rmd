@@ -95,10 +95,12 @@ mdl_age = lm(raw_score ~
                I(p_current_age^2) + 
                p_current_age, 
              data=lb_age)
+
 # More precision for paper
 summary(mdl_age)
 print("Coefficients:")
 sprintf("%.20e",mdl_age$coefficients) # More precision for paper
+
 ## Add f(age) to features
 features = features %>%
   mutate(
@@ -161,12 +163,12 @@ Examining people in age_subset (bottom edge of age_poly_viol vs COMPAS score pt 
 ggplot(lb_inds, aes(x=vio_hist, y=`Risk of Violence_raw_score`)) +
      geom_point(shape=1)  +
      theme_bw()+
-     ggtitle("Risk of Violence Raw vs Age at Current Offense, age_subset")
+     ggtitle("Risk of Violence Raw vs Summed violence history")
 
 ggplot(lb_inds, aes(x=history_noncomp, y=`Risk of Violence_raw_score`)) +
      geom_point(shape=1)  + 
      theme_bw()+
-     ggtitle("Risk of Violence Raw vs Age at Current Offense, age_subset")
+     ggtitle("Risk of Violence Raw vs summed history of noncompliance")
 
 ggplot(lb_inds, aes(x=p_age_first_offense, y=`Risk of Violence_raw_score`)) +
      geom_point(shape=1)  +
@@ -238,6 +240,36 @@ ggplot(age_subset_long, aes(x=violence_history_component,
       theme(axis.text.x = element_text(angle = 45, vjust=1,hjust=1)) 
 
 ```
+
+```{r}
+lb_inds1 = lb_inds%>%
+       select(vio_hist,person_id,p_juv_fel_count,p_felprop_violarrest,
+              p_murder_arrest,p_felassault_arrest,
+              p_misdemassault_arrest,#p_famviol_arrest 
+              p_sex_arrest,p_weapons_arrest, current_offense_date, first_offense_date, screening_date)%>%
+       filter(vio_hist==1)
+lb_inds1
+```
+
+```{r}
+lb_inds3 = lb_inds%>%
+       select(history_noncomp,person_id, current_offense_date, first_offense_date, screening_date)%>%
+       filter(history_noncomp==1)
+lb_inds3
+```
+Possible reason for people on lower bound having criminal history? They are very old or their sole prior occurred only a few days before the screening date. 
+
+```{r}
+lb_inds1 = lb_inds%>%
+       select(non,person_id,p_juv_fel_count,p_felprop_violarrest,
+              p_murder_arrest,p_felassault_arrest,
+              p_misdemassault_arrest,#p_famviol_arrest 
+              p_sex_arrest,p_weapons_arrest, current_offense_date, first_offense_date, screening_date)%>%
+       filter(history_noncomp==1)
+lb_inds1
+
+```
+
 
 Filtering for individuals who have NO violence history or history of noncompliance and seeing if this makes the lower bound clearer. 
 ```{r}
