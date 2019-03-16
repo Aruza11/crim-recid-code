@@ -82,6 +82,7 @@ features = features %>%
 features_f_age = features %>%
   filter(filt1,filt5) %>%
   select(p_current_age, raw_score)
+
 lb_age = features_f_age %>%
   group_by(p_current_age) %>%
   #arrange(raw_score, .by_group=TRUE) %>%

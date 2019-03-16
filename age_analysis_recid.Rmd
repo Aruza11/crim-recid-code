@@ -12,6 +12,7 @@ knitr::opts_chunk$set(warning=F, message=F,echo = TRUE)
 ```{r}
 library(tidyverse)
 library(magrittr)
+library(segmented)
 source('functions.r')
 
 load("Table_construction.Rdata") #loading beau's version of data
@@ -56,7 +57,8 @@ features = features %>%
     filt1 = `Risk of Recidivism_decile_score` != -1, `Risk of Violence_decile_score` != -1, # Filter 1
     filt3 = !is.na(current_offense_date), # Filter 3
     filt4 = current_offense_date <= current_offense_date_limit, # Filter 4
-    filt5 = p_current_age > 18 & p_current_age <= 70 # Filter 5
+    filt5 = p_current_age > 18 & p_current_age <= 65, # Filter 5
+    filt6 = crim_inv == 0  # Filter 6
   )
 ```
 
@@ -64,14 +66,15 @@ features = features %>%
 Modelling the COMPAS Risk of Recidivism score with a quadratic poly.
 ```{r}
 features_f_age = features %>%
-  filter(filt1,filt5) %>%
-  select(p_current_age, raw_score)
+  filter(filt1,filt5, filt6) 
 
+
+#filter out any individiuals with crim inv history on lb of age poly
 lb_age = features_f_age %>%
   group_by(p_current_age) %>%
-  #arrange(raw_score, .by_group=TRUE) %>%
   arrange(raw_score) %>%
   top_n(n=-1, wt=raw_score) # Fit lower bound on smallest value
+
 mdl_age = lm(raw_score ~ 
                I(p_current_age^2) + 
                p_current_age, 
@@ -88,17 +91,40 @@ features = features %>%
   mutate(
     f_age = predict(mdl_age, newdata=data.frame(p_current_age=p_current_age)),
     raw_score__f_age = raw_score - f_age,
-    filt6 = raw_score >= f_age
+    filt7 = raw_score >= f_age - 0.05
   )
+## Add same filters to lb_age 
+lb_age = lb_age %>% 
+    mutate(
+    f_age = predict(mdl_age, newdata=data.frame(p_current_age=p_current_age)),
+    raw_score__f_age = raw_score - f_age,
+    filt7 = raw_score >= f_age - 0.05
+    )
+
 ```
 
-
-Plot age poly found
+Plotting settings
 ```{r}
-## Age polynomial plot
 xmin = 18
-xmax = 70
-xx = seq(xmin,xmax, length.out=1000)
+xmax = 65
+xx = seq(xmin,xmax, length.out = 1000)
+```
+
+## Age polynomial plot
+Generate a preliminary plot of age vs COMPAS general score
+```{r}
+
+ggplot()+
+  geom_point(aes(x=p_current_age, raw_score, color = factor(filt7)),alpha=.3, data=lb_age) +
+  geom_line(aes(x=xx, predict(mdl_age, newdata=data.frame(p_current_age=xx))),color="#F8766D") +
+  theme_bw()+
+  xlim(xmin,xmax)+
+  xlab("Age at COMPAS screening date") +
+  ylab("General score") +
+  theme(text = element_text(size=12),
+        axis.text=element_text(size=12),
+        legend.position="none")
+
 ggplot()+
   geom_point(aes(x=p_current_age, raw_score), color="#619CFF",alpha=.3, data=features_f_age) +
   geom_line(aes(x=xx, predict(mdl_age, newdata=data.frame(p_current_age=xx))),color="#F8766D") +
@@ -112,7 +138,204 @@ ggplot()+
 ```
 
 
-Individuals on bottom edge
+
+```{r}
+features_f_age2 = features %>% 
+    filter(filt1, filt5, filt6, filt7)
+
+lb_temp = features_f_age2 %>%
+  group_by(p_current_age) %>%
+    arrange(raw_score)%>%
+    top_n(n=-1, wt = raw_score)
+
+lb_values = lb_temp %>%  
+    select(p_current_age, raw_score)%>%
+    group_by(p_current_age) %>%
+      summarize(raw_score = unique(raw_score), 
+                n_inds = n()) %>%
+    arrange(p_current_age)
+
+valid_ages = lb_values %>% 
+    filter(n_inds > 1) %>%
+    select(p_current_age) %>% 
+    unlist() %>% as.numeric() 
+
+lb_filt = lb_temp %>%
+  filter(p_current_age %in% valid_ages ) 
+
+#filtered out points 
+lb_outliers = rbind(
+                #reason not included in lb_filt was  
+                #age not above age poly
+                setdiff(lb_age, lb_temp) %>%
+                  filter(!filt7) %>% #below age poly
+                  mutate(reason = "Below age polynomial")
+                
+                # # reason not included in lb_filt was
+                # # there was only a single value for that age
+                # setdiff(lb_temp, lb_filt) %>%
+                #   mutate(reason = "Only observation for a certain age")
+                ) %>%
+              select(p_current_age, p_age_first_offense, raw_score, reason)
+
+lb = lb_filt %>% 
+     select(p_current_age, p_age_first_offense, raw_score) %>%
+     mutate(reason = "Used to construct linear splines") %>%
+     rbind(lb_outliers)
+
+# write.csv(lb_filt%>%
+            # select(p_current_age, raw_score) %>%
+            # mutate(pos_raw_score =raw_score + 5)
+          # , "lb_filt.csv")
+```
+
+
+
+Generating linear splines to fit the lower 
+Plottng individuals on new bottom edge produced by fitting to lb_filt individuals. 
+```{r}
+mdl_age_spline <- segmented(lm(raw_score ~ p_current_age, data = lb_filt), 
+                            seg.Z = ~p_current_age, psi = list(p_current_age = c(39,58)),
+  control = seg.control(display = FALSE)
+)
+
+summary.segmented(mdl_age_spline)$psi
+break1 =  summary.segmented(mdl_age_spline)$psi[1,2]
+break2 =  summary.segmented(mdl_age_spline)$psi[2,2]
+
+xx1 = seq(xmin,break1, length.out=1000)
+xx2 = seq(break1,break2, length.out=1000)
+xx3 = seq(break2,xmax, length.out=1000)
+
+age_spline_recid = 
+  ggplot()+
+  geom_point(aes(x=p_current_age, raw_score, color= factor(reason)),alpha=.5, data=lb ) +
+  scale_color_manual(values=c("red", "grey25")) + 
+  geom_line(aes(x=xx1, y = predict(mdl_age_spline, newdata=data.frame(p_current_age=xx1))),
+                color="darkorange1", size = 1) +
+  geom_line(aes(x=xx2, y = predict(mdl_age_spline, newdata=data.frame(p_current_age=xx2))),
+                color="cyan3", size = 1) +
+  geom_line(aes(x=xx3, y = predict(mdl_age_spline, newdata=data.frame(p_current_age=xx3))),
+                color="seagreen3", size = 1) +
+  theme_bw()+
+  xlim(xmin,xmax)+
+  xlab("\n Age at COMPAS screening date") +
+  ylab("General Score \n") +
+  theme(text = element_text(size=14),
+        axis.text=element_text(size=14),
+        legend.position = c(.95,.95),
+        legend.title = element_blank(),
+        legend.justification = c("right", "top"),
+        legend.key = element_rect(fill = "aliceblue"),
+        legend.background = element_rect(fill="aliceblue",
+                                  size=0.5, linetype="solid")
+        )
+
+age_spline_recid
+
+
+```
+Comments on plots: missing data for 18-21, which seems to have a different age and raw score relationship for the Violence score--does seem like age 22 lies on a different spline. 
+
+
+```{r}
+ggsave("Figures/age_spline_recid.pdf",plot = age_spline_recid, width = 7, height = 4, units = "in")
+```
+
+
+Examining individuals in lb_filt where age at first offense != current age
+```{r}
+#plot of age at first offense != current age in red with inds in lb_filt
+fireplot_lb_recid = ggplot()+
+  geom_point(aes(x=p_current_age, y = raw_score,colour = p_current_age == p_age_first_offense ), 
+             alpha=.3, data=lb_filt %>% na.omit()) +
+  scale_colour_manual(name='Current age equal to age at first arrest', values = setNames(c('red','#619CFF'),c(F, T))) +
+  theme_bw()+
+  xlim(xmin,xmax)+
+  xlab("\n Age at COMPAS screening date") +
+  ylab("General score \n") +
+  theme(text = element_text(size=14),
+        axis.text=element_text(size=14), 
+        legend.position ="top")
+fireplot_lb_recid
+
+#same plot as above but with everybody in features
+fireplot_all_recid = ggplot()+
+  geom_point(aes(x=p_current_age, y = raw_score, colour = p_current_age == p_age_first_offense ), 
+             alpha=.2, data=features_f_age2 %>% 
+                            na.omit() %>%
+                            mutate(p_current_age = ifelse(p_current_age == p_age_first_offense, 
+                                                          p_current_age, 
+                                                          p_current_age+.5))
+             ) +
+  scale_colour_manual(name='Current age equal to age at first arrest', values = setNames(c('red','#619CFF'),c(F, T))) +
+  theme_bw()+
+  xlim(xmin,xmax)+
+  xlab("\n Age at COMPAS screening date") +
+  ylab("General score \n") +
+  theme(text = element_text(size=14),
+        axis.text=element_text(size=14), 
+        legend.position ="top")
+fireplot_all_recid
+
+
+#plot of score vs age at first arrest
+age_first_offense_recid = ggplot()+
+  geom_point(aes(x=p_age_first_offense, raw_score), color="#619CFF",alpha=.3, 
+             data=features_f_age2) +
+  theme_bw()+
+  xlim(xmin,xmax)+
+  xlab("\n Age at First Offense") +
+  ylab("General score \n") +
+  theme(text = element_text(size=14),
+        axis.text=element_text(size=14),
+        legend.position="none")
+age_first_offense_recid
+
+#plot of score vs current age and age at first arrest
+reverse_fireplot_all_recid = ggplot()+
+  geom_point(aes(x=p_current_age, raw_score), color="#619CFF",alpha=.2, 
+             data=features_f_age2 %>% 
+                  na.omit() %>%
+                  mutate(p_current_age = p_current_age+0.5 )) +
+  geom_point(aes(x=p_age_first_offense, raw_score), color="red",alpha=.04, 
+             data=features_f_age2) +
+  scale_colour_manual(name='Legend', values = setNames(c('red','#619CFF'),c("Age at first offense", "Current age"))) +
+  theme_bw()+
+  xlim(xmin,xmax)+
+  xlab("\n Age") +
+  ylab("General score \n") +
+  theme(text = element_text(size=14),
+        axis.text=element_text(size=14),
+        legend.position="none")
+reverse_fireplot_all_recid
+
+#Plotting people in lb, so that points which repeat more are larger. 
+lb_inds_freq_recid = ggplot()+
+  stat_sum(aes(x=p_current_age, raw_score), color="#619CFF",alpha=.7, data=lb_filt) +
+  theme_bw() +
+  xlim(xmin,xmax) +
+  xlab("\n Age at COMPAS screening date") +
+  ylab("General score\n ") +
+  theme(text = element_text(size=14),
+        axis.text=element_text(size=14),
+        legend.position="none")
+lb_inds_freq_recid
+
+
+```
+
+
+```{r}
+ggsave("Figures/fireplot_all_recid.pdf",plot = fireplot_all_recid, width = 7, height = 4, units = "in")
+ggsave("Figures/reverse_fireplot_all_recid.pdf",plot = reverse_fireplot_all_viol, width = 7, height = 4, units = "in")
+ggsave("Figures/lb_inds_freq_recid.pdf",plot = lb_inds_freq_recid, width = 7, height = 4, units = "in")
+
+```
+
+
+### DATA EXPLORATION 
+Examining individuals on bottom edge of age poly 1
 ```{r}
 
 #individuals on the lower bound of the age polynomial 
@@ -122,9 +345,6 @@ lb_inds = features %>%
   arrange(raw_score) %>%
   top_n(n=-1, wt=raw_score) # Fit lower bound on smallest value
 
-xmin = 18
-xmax = 70
-xx = seq(xmin,xmax, length.out=1000)
 
 ggplot()+
   geom_point(aes(x=p_current_age, raw_score), color="#619CFF",alpha=.3, data=lb_inds) +
@@ -278,6 +498,11 @@ ggplot()+
 
 ```
 
+
+
+#####
+Looking for other relationships 
+#####
 ```{r}
 #Risk of Recidivism vs Age: p_current_age
 ggplot(train, aes(x=p_current_age, y=`Risk of Recidivism_raw_score`)) +
