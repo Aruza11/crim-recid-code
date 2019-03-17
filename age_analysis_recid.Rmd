@@ -155,13 +155,13 @@ lb_values = lb_temp %>%
                 n_inds = n()) %>%
     arrange(p_current_age)
 
-valid_ages = lb_values %>% 
-    filter(n_inds > 1) %>%
-    select(p_current_age) %>% 
-    unlist() %>% as.numeric() 
-
-lb_filt = lb_temp %>%
-  filter(p_current_age %in% valid_ages ) 
+# valid_ages = lb_values %>% 
+#     filter(n_inds > 1) %>%
+#     select(p_current_age) %>% 
+#     unlist() %>% as.numeric() 
+# 
+# lb_filt = lb_temp %>%
+#   filter(p_current_age %in% valid_ages ) 
 
 #filtered out points 
 lb_outliers = rbind(
@@ -183,10 +183,6 @@ lb = lb_filt %>%
      mutate(reason = "Used to construct linear splines") %>%
      rbind(lb_outliers)
 
-# write.csv(lb_filt%>%
-            # select(p_current_age, raw_score) %>%
-            # mutate(pos_raw_score =raw_score + 5)
-          # , "lb_filt.csv")
 ```
 
 

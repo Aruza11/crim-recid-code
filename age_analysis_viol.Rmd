@@ -70,7 +70,8 @@ features = features %>%
     filt3 = !is.na(current_offense_date), # Filter 3
     filt4 = current_offense_date <= current_offense_date_limit, # Filter 4
     filt5 = p_current_age > 18 & p_current_age <= 65,  # Filter 5
-    filt6 = vio_hist == 0 & history_noncomp==0 # Filter 6
+    filt6 = vio_hist == 0 , # Filter 6
+    filt7 = history_noncomp==0 # Filter 7
   )
 ```
 
@@ -81,10 +82,10 @@ Modelled age with a 4th degree polynomial. See broward_sheriff_data for our effo
 ## Fit age polynomial
 
 ```{r}
-features_f_age = features %>%
-  filter(filt1,filt5, filt6) 
+features_age_poly = features %>%
+  filter(filt1,filt5, filt6, filt7) 
 
-lb_age = features_f_age %>%
+lb_age = features_age_poly %>%
   group_by(p_current_age) %>%
   arrange(raw_score) %>%
   top_n(n=-1, wt=raw_score) # Fit lower bound on smallest value
@@ -105,21 +106,21 @@ sprintf("%.20e",mdl_age$coefficients) # More precision for paper
 ## Add f(age) to features and add filter
 features = features %>%
   mutate(
-    f_age = predict(mdl_age, newdata=data.frame(p_current_age=p_current_age)),
-    raw_score__f_age = raw_score - f_age,
-    filt7 = raw_score >= f_age - 0.05
+    age_poly = predict(mdl_age, newdata=data.frame(p_current_age=p_current_age)),
+    raw_score__age_poly = raw_score - age_poly,
+    filt8 = raw_score >= age_poly - 0.05
   )
 
 ## Add same columns as above to lb_age 
 lb_age = lb_age %>% 
     mutate(
-    f_age = predict(mdl_age, newdata=data.frame(p_current_age=p_current_age)),
-    raw_score__f_age = raw_score - f_age,
-    filt7 = raw_score >= f_age - 0.05
+    age_poly = predict(mdl_age, newdata=data.frame(p_current_age=p_current_age)),
+    raw_score__age_poly = raw_score - age_poly,
+    filt8 = raw_score >= age_poly - 0.05
     )
 ```
 
-Plotting settings
+Plotting settings for age analysis
 ```{r}
 xmin = 18
 xmax = 65
@@ -130,7 +131,7 @@ xx = seq(xmin,xmax, length.out = 1000)
 Generate a preliminary plot of age vs COMPAS violence score
 ```{r}
 ggplot()+
-  geom_point(aes(x=p_current_age, raw_score, color = factor(filt7)),alpha=.3, data=lb_age) +
+  geom_point(aes(x=p_current_age, raw_score, color = factor(filt8)),alpha=.3, data=lb_age) +
   geom_line(aes(x=xx, predict(mdl_age, newdata=data.frame(p_current_age=xx))),color="#F8766D") +
   theme_bw()+
   xlim(xmin,xmax)+
@@ -141,7 +142,7 @@ ggplot()+
         legend.position="none")
 
 ggplot()+
-  geom_point(aes(x=p_current_age, raw_score), color="#619CFF",alpha=.3, data=features_f_age) +
+  geom_point(aes(x=p_current_age, raw_score), color="#619CFF",alpha=.3, data=features_age_poly) +
   geom_line(aes(x=xx, predict(mdl_age, newdata=data.frame(p_current_age=xx))),color="#F8766D") +
   theme_bw()+
   xlim(xmin,xmax)+
@@ -154,10 +155,10 @@ ggplot()+
 
 Filter out outliers under the age polynomial 
 ```{r}
-features_f_age2 = features %>% 
-    filter(filt1, filt5, filt6, filt7)
+features_age_poly2 = features %>% 
+    filter(filt1, filt5, filt6, filt7, filt8)
 
-lb_temp = features_f_age2 %>%
+lb_temp = features_age_poly2 %>%
   group_by(p_current_age) %>%
     arrange(raw_score)%>%
     top_n(n=-1, wt = raw_score)
@@ -169,20 +170,22 @@ lb_values = lb_temp %>%
                 n_inds = n()) %>%
     arrange(p_current_age)
 
-valid_ages = lb_values %>% 
-    filter(n_inds > 1) %>%
-    select(p_current_age) %>% 
-    unlist() %>% as.numeric() 
+# valid_ages = lb_values %>% 
+#     filter(n_inds > 1) %>%
+#     select(p_current_age) %>% 
+#     unlist() %>% as.numeric() 
+# 
+# lb_filt = lb_temp %>%
+#   filter(p_current_age %in% valid_ages ) 
 
-lb_filt = lb_temp %>%
-  filter(p_current_age %in% valid_ages ) 
+lb_filt = lb_temp 
 
 #filtered out points 
 lb_outliers = rbind(
                 #reason not included in lb_filt was  
                 #age not above age poly
                 setdiff(lb_age, lb_temp) %>%
-                  filter(!filt7) %>% #below age poly
+                  filter(!filt8) %>% #below age poly
                   mutate(reason = "Below age polynomial")
                 
                 # # reason not included in lb_filt was
@@ -196,22 +199,28 @@ lb = lb_filt %>%
      select(p_current_age, p_age_first_offense, raw_score) %>%
      mutate(reason = "Used to construct linear splines") %>%
      rbind(lb_outliers)
-# write.csv(lb_filt%>%
-            # select(p_current_age, raw_score) %>%
-            # mutate(pos_raw_score =raw_score + 5)
-          # , "lb_filt.csv")
 ```
 
 
-Generating new age curves. 
-Plottng individuals on new bottom edge produced by fitting to lb_filt individuals. 
+Generating new age spline. 
 ```{r}
 mdl_age_spline <- segmented(lm(raw_score ~ p_current_age, data = lb_filt), 
                             seg.Z = ~p_current_age, psi = list(p_current_age = c(22,36,58)),
   control = seg.control(display = FALSE)
 )
 
+#Add Filter 9
+features = features %>%
+  mutate(
+    age_spline = predict(mdl_age_spline, newdata=data.frame(p_current_age=p_current_age)),
+    raw_score__age_spline = raw_score - age_spline,
+    filt9 = raw_score >= age_spline - 0.05
+  )
 
+```
+
+Plottng individuals on new bottom edge produced by fitting to lb_filt individuals. 
+```{r}
 break1 =  summary.segmented(mdl_age_spline)$psi[1,2]
 break2 = summary.segmented(mdl_age_spline)$psi[2,2]
 break3 = summary.segmented(mdl_age_spline)$psi[3,2]
@@ -224,7 +233,7 @@ xx4 = seq(break3,xmax, length.out=500)
 age_spline_viol = 
   ggplot()+
   geom_point(aes(x=p_current_age, raw_score, color= factor(reason)),alpha=.5, data=lb ) +
-  scale_color_manual(values=c("red","darkorchid1", "grey25")) + 
+  scale_color_manual(values=c("red", "grey25")) + 
   geom_line(aes(x=xx1, y = predict(mdl_age_spline, newdata=data.frame(p_current_age=xx1))),
                 color="#F8766D", size = 1) +
   geom_line(aes(x=xx2, y = predict(mdl_age_spline, newdata=data.frame(p_current_age=xx2))),
@@ -249,7 +258,6 @@ age_spline_viol =
         legend.background = element_rect(fill="aliceblue",
                                   size=0.5, linetype="solid")
         )
-
 age_spline_viol
 ```
 
@@ -257,7 +265,6 @@ age_spline_viol
 ggsave("Figures/age_spline_viol.pdf",plot = age_spline_viol, width = 7, height = 4, units = "in")
 
 ```
-
 
 Examining individuals in lb_filt where age at first offense != current age
 ```{r}
@@ -279,7 +286,7 @@ fireplot_lb_viol
 #same plot as above but with everybody in features
 fireplot_all_viol = ggplot()+
   geom_point(aes(x=p_current_age, y = raw_score, colour = p_current_age == p_age_first_offense ), 
-             alpha=.2, data=features_f_age2 %>% 
+             alpha=.2, data=features_age_poly2 %>% 
                             na.omit() %>%
                             mutate(p_current_age = ifelse(p_current_age == p_age_first_offense, 
                                                           p_current_age, 
@@ -299,7 +306,7 @@ fireplot_all_viol
 #plot of score vs age at first arrest
 age_first_offense_viol = ggplot()+
   geom_point(aes(x=p_age_first_offense, raw_score), color="#619CFF",alpha=.3, 
-             data=features_f_age2) +
+             data=features_age_poly2) +
   theme_bw()+
   xlim(xmin,xmax)+
   xlab("\n Age at First Offense") +
@@ -312,11 +319,11 @@ age_first_offense_viol
 #plot of score vs current age and age at first arrest
 reverse_fireplot_all_viol = ggplot()+
   geom_point(aes(x=p_current_age, raw_score), color="#619CFF",alpha=.2, 
-             data=features_f_age2 %>% 
+             data=features_age_poly2 %>% 
                   na.omit() %>%
                   mutate(p_current_age = p_current_age+0.5 )) +
   geom_point(aes(x=p_age_first_offense, raw_score), color="red",alpha=.04, 
-             data=features_f_age2) +
+             data=features_age_poly2) +
   scale_colour_manual(name='Legend', values = setNames(c('red','#619CFF'),c("Age at first offense", "Current age"))) +
   theme_bw()+
   xlim(xmin,xmax)+
@@ -345,16 +352,129 @@ lb_inds_freq_viol
 
 Save figures for paper
 ```{r}
-# ggsave("Figures/fireplot_lb_viol.pdf",plot = fireplot_lb_viol, width = 7, height = 4, units = "in")
 ggsave("Figures/fireplot_all_viol.pdf",plot = fireplot_all_viol, width = 7, height = 4, units = "in")
-# ggsave("Figures/age_first_offense_viol.pdf",plot = age_first_offense_viol, width = 7, height = 4, units = "in")
 ggsave("Figures/reverse_fireplot_all_viol.pdf",plot = reverse_fireplot_all_viol, width = 7, height = 4, units = "in")
 ggsave("Figures/lb_inds_freq_viol.pdf",plot = lb_inds_freq_viol, width = 7, height = 4, units = "in")
 
 ```
 
+### Age at first offense analysis
 
 
+```{r}
+#Filter observations to remove age outliers
+features_age_spline = features %>% 
+    filter(filt1, filt5, filt6, filt7,filt9)
+
+ggplot()+
+  geom_point(aes(x=p_age_first_offense, y= raw_score__age_spline), color = "#619CFF",alpha=.3, data=features_age_spline) +
+  theme_bw()+
+  xlim(xmin,xmax)+
+  xlab("Age at First Offense") +
+  ylab("Violence score - age spline") +
+  theme(text = element_text(size=14),
+        axis.text=element_text(size=14),
+        legend.position="none")
+
+```
+
+### History of Violence Subscale Analysis
+
+Plotting settings for history of violence subscale analysis
+```{r}
+xmin_vio_hist = 0
+xmax_vio_hist = 13
+xx_vio_hist = seq(xmin_vio_hist,xmax_vio_hist, length.out = 1000)
+```
+
+
+Plot violence history vs score after subtracting  out the age splines. 
+```{r}
+features_age_spline = features %>% 
+    filter(filt1, filt5, filt9)
+
+ggplot()+
+  geom_point(aes(x=vio_hist, y= raw_score__age_spline), color = "#619CFF",alpha=.3, data=features_age_spline) +
+  theme_bw()+
+  xlim(xmin_vio_hist,xmax_vio_hist)+
+  ylim(-1, 5) + 
+  xlab("History of Violence Subscale Score ") +
+  ylab("Violence score - f_age") +
+  theme(text = element_text(size=14),
+        axis.text=element_text(size=14),
+        legend.position="none")
+
+```
+
+Iterate through possible subscale variable weights from 1 - 2, testing a higher weight of 3 on murder arrest and felony assault arrests. 
+
+
+```{r}
+weights = 
+```
+
+```{r}
+for(var_weights in c(weights)){
+  
+  features_age_spline = features_age_spline %>%
+        mutate(
+          vio_hist_weighted = 
+          var_weights[[1]] * p_juv_fel_count +
+          var_weights[[2]] * p_felprop_violarrest +
+          var_weights[[3]] * p_murder_arrest +
+          var_weights[[4]] *  p_felassault_arrest +
+          var_weights[[5]] * p_misdemassault_arrest +
+          #p_famviol_arrest+ #because no observations have nonzero for this
+          var_weights[[6]] * p_sex_arrest +
+          var_weights[[7]] * p_weapons_arrest )
+  
+  print(
+  ggplot()+
+  geom_point(aes(x=vio_hist_weighted, y= raw_score__age_spline), color = "#619CFF",alpha=.3, data=features_age_spline) +
+  theme_bw()+
+  xlim(xmin_vio_hist,xmax_vio_hist)+
+  ylim(-1, 5) + 
+  xlab("History of Violence Subscale Score ") +
+  ylab("Violence score - f_age") +
+  theme(text = element_text(size=14),
+        axis.text=element_text(size=14),
+        legend.position="none")
+  )
+  
+
+}
+
+
+```
+
+
+Examine Lower bound individuals, using filter 7 (noncomp history = 0)
+```{r}
+
+```
+
+### History of Noncompliance Subscale Analysis
+Plotting settings for history of violence subscale analysis
+```{r}
+xmin_history_noncomp = 0
+xmax_history_noncomp = 21
+xx_history_noncomp = seq(xmin_history_noncomp,xmax_history_noncomp, length.out = 1000)
+```
+
+Plot noncompliance history vs score
+```{r}
+ggplot()+
+  geom_point(aes(x=history_noncomp, y= raw_score__age_spline), color = "#619CFF",alpha=.3, data=features_age_spline) +
+  theme_bw()+
+  xlim(xmin_history_noncomp,xmax_history_noncomp)+
+  ylim(-1, 5) + 
+  xlab("History of Noncompliance Subscale Score ") +
+  ylab("Violence score - f_age") +
+  theme(text = element_text(size=14),
+        axis.text=element_text(size=14),
+        legend.position="none")
+
+```
 
 ####EXAMINING PEOPLE IN LB_INDS - for first age poly
 
@@ -382,7 +502,7 @@ ggplot(lb_inds, aes(x=vio_hist)) +
      ggtitle("Distribution of Summed History of Violence Subscale Items\nfor Individuals on Lower Bound of age_poly")
 
 #comparison histogram for all individuals who are 18-70, have scores not -1
-ggplot(features%>%filter(filt1,filt5,filt7), 
+ggplot(features%>%filter(filt1,filt5,filt8), 
        aes(x=vio_hist)) +
      geom_histogram()  +
      ggtitle("Distribution of Summed History of Violence Subscale Items\nfor All Individuals")
@@ -394,7 +514,7 @@ ggplot(lb_inds, aes(x=history_noncomp)) +
      ggtitle("Distribution of Summed History of Noncompliance Subscale Items\nfor Individuals on Lower Bound of age_poly")
 
 #comparison histogram for all individuals
-ggplot(features%>%filter(filt1,filt5,filt7), 
+ggplot(features%>%filter(filt1,filt5,filt8), 
        aes(x=history_noncomp)) +
      geom_histogram()  +
      ggtitle("Distribution of Summed History of Noncompliance Subscale Items\nfor All Individuals")
