@@ -121,8 +121,8 @@ ggplot()+
   xlim(xmin,xmax)+
   xlab("Age at COMPAS screening date") +
   ylab("General score") +
-  theme(text = element_text(size=12),
-        axis.text=element_text(size=12),
+  theme(text = element_text(size=18),
+        axis.text=element_text(size=18),
         legend.position="none")
 
 ggplot()+
@@ -132,8 +132,8 @@ ggplot()+
   xlim(xmin,xmax)+
   xlab("Age at COMPAS screening date") +
   ylab("General score") +
-  theme(text = element_text(size=12),
-        axis.text=element_text(size=12),
+  theme(text = element_text(size=18),
+        axis.text=element_text(size=18),
         legend.position="none")
 ```
 
@@ -208,8 +208,8 @@ age_spline_recid =
   xlim(xmin,xmax)+
   xlab("\n Age at COMPAS screening date") +
   ylab("General Score \n") +
-  theme(text = element_text(size=14),
-        axis.text=element_text(size=14),
+  theme(text = element_text(size=18),
+        axis.text=element_text(size=18),
         legend.position = c(.95,.95),
         legend.title = element_blank(),
         legend.justification = c("right", "top"),
@@ -226,7 +226,7 @@ Comments on plots: missing data for 18-21, which seems to have a different age a
 
 
 ```{r}
-ggsave("Figures/age_spline_recid.pdf",plot = age_spline_recid, width = 7, height = 4, units = "in")
+ggsave("Figures/age_spline_recid.pdf",plot = age_spline_recid, width = 6, height = 4, units = "in")
 ```
 
 
@@ -241,8 +241,8 @@ fireplot_lb_recid = ggplot()+
   xlim(xmin,xmax)+
   xlab("\n Age at COMPAS screening date") +
   ylab("General score \n") +
-  theme(text = element_text(size=14),
-        axis.text=element_text(size=14), 
+  theme(text = element_text(size=16),
+        axis.text=element_text(size=16), 
         legend.position ="top")
 fireplot_lb_recid
 
@@ -260,8 +260,8 @@ fireplot_all_recid = ggplot()+
   xlim(xmin,xmax)+
   xlab("\n Age at COMPAS screening date") +
   ylab("General score \n") +
-  theme(text = element_text(size=14),
-        axis.text=element_text(size=14), 
+  theme(text = element_text(size=18),
+        axis.text=element_text(size=18), 
         legend.position ="top")
 fireplot_all_recid
 
@@ -274,8 +274,8 @@ age_first_offense_recid = ggplot()+
   xlim(xmin,xmax)+
   xlab("\n Age at First Offense") +
   ylab("General score \n") +
-  theme(text = element_text(size=14),
-        axis.text=element_text(size=14),
+  theme(text = element_text(size=18),
+        axis.text=element_text(size=18),
         legend.position="none")
 age_first_offense_recid
 
@@ -292,8 +292,8 @@ reverse_fireplot_all_recid = ggplot()+
   xlim(xmin,xmax)+
   xlab("\n Age") +
   ylab("General score \n") +
-  theme(text = element_text(size=14),
-        axis.text=element_text(size=14),
+  theme(text = element_text(size=18),
+        axis.text=element_text(size=18),
         legend.position="none")
 reverse_fireplot_all_recid
 
@@ -304,19 +304,24 @@ lb_inds_freq_recid = ggplot()+
   xlim(xmin,xmax) +
   xlab("\n Age at COMPAS screening date") +
   ylab("General score\n ") +
-  theme(text = element_text(size=14),
-        axis.text=element_text(size=14),
+  theme(text = element_text(size=18),
+        axis.text=element_text(size=18),
         legend.position="none")
 lb_inds_freq_recid
+
+nrow(lb_filt)
+
+lb_filt %>% group_by(p_current_age, raw_score) %>% summarise(n()) %>% View()
 
 
 ```
 
 
 ```{r}
-ggsave("Figures/fireplot_all_recid.pdf",plot = fireplot_all_recid, width = 7, height = 4, units = "in")
-ggsave("Figures/reverse_fireplot_all_recid.pdf",plot = reverse_fireplot_all_recid, width = 7, height = 4, units = "in")
-ggsave("Figures/lb_inds_freq_recid.pdf",plot = lb_inds_freq_recid, width = 7, height = 4, units = "in")
+ggsave("Figures/fireplot_all_recid.pdf",plot = fireplot_all_recid, width = 6, height = 4, units = "in")
+ggsave("Figures/age_first_offense_recid.pdf",plot = age_first_offense_recid, width = 6, height = 4, units = "in")
+ggsave("Figures/reverse_fireplot_all_recid.pdf",plot = reverse_fireplot_all_recid, width = 6, height = 4, units = "in")
+ggsave("Figures/lb_inds_freq_recid.pdf",plot = lb_inds_freq_recid, width = 6, height = 4, units = "in")
 
 ```
 

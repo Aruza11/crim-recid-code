@@ -137,8 +137,8 @@ ggplot()+
   xlim(xmin,xmax)+
   xlab("Age at COMPAS screening date") +
   ylab("Violent score") +
-  theme(text = element_text(size=12),
-        axis.text=element_text(size=12),
+  theme(text = element_text(size=18),
+        axis.text=element_text(size=18),
         legend.position="none")
 
 ggplot()+
@@ -148,8 +148,8 @@ ggplot()+
   xlim(xmin,xmax)+
   xlab("Age at COMPAS screening date") +
   ylab("Violent score") +
-  theme(text = element_text(size=12),
-        axis.text=element_text(size=12),
+  theme(text = element_text(size=18),
+        axis.text=element_text(size=18),
         legend.position="none")
 ```
 
@@ -157,8 +157,8 @@ ggplot()+
 #Filter out outliers under the age polynomial, individuals with 
 #noncomp history/violence history != 0
 features_age_poly2 = features %>% 
-    filter(filt1, filt5, filt6, filt7, filt8) %>%
-    filter(p_age_first_offense == p_current_age)
+    filter(filt1, filt5, filt6, filt7, filt8) 
+    # filter(p_age_first_offense == p_current_age)
 
 lb_temp = features_age_poly2 %>%
   group_by(p_current_age) %>%
@@ -207,7 +207,7 @@ lb = lb_filt %>%
 Generating new age spline. 
 ```{r}
 mdl_age_spline <- segmented(lm(raw_score ~ p_current_age, data = lb_filt), 
-                            seg.Z = ~p_current_age, psi = list(p_current_age = c(22,36,58)),
+                            seg.Z = ~p_current_age, psi = list(p_current_age = c(22,36,44)),
   control = seg.control(display = FALSE)
 )
 
@@ -226,6 +226,7 @@ Plottng individuals on new bottom edge produced by fitting to lb_filt individual
 break1 =  summary.segmented(mdl_age_spline)$psi[1,2]
 break2 = summary.segmented(mdl_age_spline)$psi[2,2]
 break3 = summary.segmented(mdl_age_spline)$psi[3,2]
+
 
 xx1 = seq(xmin,break1, length.out=500)
 xx2 = seq(break1,break2, length.out=500)
@@ -250,8 +251,8 @@ age_spline_viol =
     x = "\n Age at COMPAS screening date", 
     y = "Violence Score \n"
   ) +
-  theme(text = element_text(size=16),
-        axis.text=element_text(size=16),
+  theme(text = element_text(size=18),
+        axis.text=element_text(size=18),
         legend.position = c(.95,.95),
         legend.title = element_blank(),
         # legend.key.width = unit(1.5, "cm"),
@@ -264,7 +265,7 @@ age_spline_viol
 ```
 
 ```{r}
-ggsave("Figures/age_spline_viol.pdf",plot = age_spline_viol, width = 5, height = 4, units = "in")
+ggsave("Figures/age_spline_viol.pdf",plot = age_spline_viol, width = 6, height = 4, units = "in")
 
 ```
 
@@ -280,8 +281,8 @@ fireplot_lb_viol = ggplot()+
   xlim(xmin,xmax)+
   xlab("\n Age at COMPAS screening date") +
   ylab("Violent score \n") +
-  theme(text = element_text(size=14),
-        axis.text=element_text(size=14), 
+  theme(text = element_text(size=16),
+        axis.text=element_text(size=16), 
         legend.position ="top")
 fireplot_lb_viol
 
@@ -299,8 +300,8 @@ fireplot_all_viol = ggplot()+
   xlim(xmin,xmax)+
   xlab("\n Age at COMPAS screening date") +
   ylab("Violent score \n") +
-  theme(text = element_text(size=14),
-        axis.text=element_text(size=14), 
+  theme(text = element_text(size=18),
+        axis.text=element_text(size=18), 
         legend.position ="top")
 fireplot_all_viol
 
@@ -313,8 +314,8 @@ age_first_offense_viol = ggplot()+
   xlim(xmin,xmax)+
   xlab("\n Age at First Offense") +
   ylab("Violent score \n") +
-  theme(text = element_text(size=14),
-        axis.text=element_text(size=14),
+  theme(text = element_text(size=18),
+        axis.text=element_text(size=18),
         legend.position="none")
 age_first_offense_viol
 
@@ -331,8 +332,8 @@ reverse_fireplot_all_viol = ggplot()+
   xlim(xmin,xmax)+
   xlab("\n Age") +
   ylab("Violent score \n") +
-  theme(text = element_text(size=14),
-        axis.text=element_text(size=14),
+  theme(text = element_text(size=18),
+        axis.text=element_text(size=18),
         legend.position="none")
 reverse_fireplot_all_viol
 
@@ -348,15 +349,18 @@ lb_inds_freq_viol = ggplot()+
         legend.position="none")
 lb_inds_freq_viol
 
+# nrow(lb_filt)
+# lb_filt %>% group_by(p_current_age, raw_score) %>% summarise(n()) %>% View()
 
 ```
 
 
 Save figures for paper
 ```{r}
-ggsave("Figures/fireplot_all_viol.pdf",plot = fireplot_all_viol, width = 7, height = 4, units = "in")
-ggsave("Figures/reverse_fireplot_all_viol.pdf",plot = reverse_fireplot_all_viol, width = 7, height = 4, units = "in")
-ggsave("Figures/lb_inds_freq_viol.pdf",plot = lb_inds_freq_viol, width = 5, height = 4, units = "in")
+ggsave("Figures/fireplot_all_viol.pdf",plot = fireplot_all_viol, width = 6, height = 4, units = "in")
+ggsave("Figures/age_first_offense_viol.pdf",plot = age_first_offense_viol, width = 6, height = 4, units = "in")
+ggsave("Figures/reverse_fireplot_all_viol.pdf",plot = reverse_fireplot_all_viol, width = 6, height = 4, units = "in")
+ggsave("Figures/lb_inds_freq_viol.pdf",plot = lb_inds_freq_viol, width = 6, height = 4, units = "in")
 
 ```
 
