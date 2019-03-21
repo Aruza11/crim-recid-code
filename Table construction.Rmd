@@ -13,7 +13,7 @@ library(lubridate)
 library(reshape2)
 library(readr)
 library(purrr)
-
+library(RSQLite)
 source('functions.R')
 ```
 
@@ -21,7 +21,7 @@ source('functions.R')
 ### Local file paths
 
 # ProPublica analysis
-f_propub = "../compas-analysis-master/"
+f_propub = "../propublica-analysis/"
 
 # Data we have pulled
 f_our_data = "../../broward-data/"
@@ -153,6 +153,15 @@ key_current_offense = compas_df_wide %>%
   group_by(person_id, screening_date) %>%
   summarize(current_offense_date = max(offense_date))
 
+#Flag individuals who have multiple offenses in 30 days prior to screening
+key_offenses_within_30 = compas_df_wide %>%
+  left_join(charge_df, by="person_id") %>% # Duplicate charges for each screening_date
+  mutate(days_offense_screening = floor(as.numeric(as.period(interval(offense_date,screening_date)), "days")),
+         within_30 = ifelse(days_offense_screening <=30, 1,0)) %>%
+  group_by(person_id, screening_date) %>% 
+  summarize(offenses_within_30 = sum(within_30))
+
+
 # Compute last current offense date allowed (two years before when data pulled)
 current_offense_date_limit = max(charge_df$offense_date) - years(2)
 
@@ -160,7 +169,9 @@ current_offense_date_limit = max(charge_df$offense_date) - years(2)
 key_events = compas_df_wide %>%
   select(person_id, screening_date) %>%
   left_join(key_first_offense, by = c("person_id","screening_date")) %>%
-  left_join(key_current_offense, by = c("person_id","screening_date"))
+  left_join(key_current_offense, by = c("person_id","screening_date")) %>%
+  left_join(key_offenses_within_30, by = c("person_id","screening_date"))
+
 ```
 
 ```{r}
@@ -194,6 +205,36 @@ jailhistory_df = jailhistory_df %>%
 prisonhistory_df = prisonhistory_df %>%
   mutate(sentence_days = floor(as.numeric(as.period(interval(in_custody,out_custody)), "days")))
 ```
+
+
+```{r}
+# charge2 = key_events %>%
+#   left_join(charge_df, by="person_id") %>% 
+#   filter(offense_date < current_offense_date) 
+# 
+# inds2 = charge2 %>%
+#        filter(person_id %in% c(3073,
+#                                 3978,
+#                                 8573))
+# inds1 = charge2 %>%
+#        filter(person_id %in% c(621,
+#                                 3730,
+#                                 6574))  %>%
+#        filter(screening_date != "2013-08-27")
+# 
+# inds3 = charge2 %>%
+#        filter(person_id %in% c(89,
+#                                 8652,
+#                                 8573))
+#   
+# View(inds1 %>% filter(person_id == 6574))
+# 
+# write.csv(inds1,"inds1_offenses.csv")
+# write.csv(inds2,"inds2_offenses.csv")
+# write.csv(inds3,"inds3_offenses.csv")
+
+```
+
 
 Now we group each ProPublica table into a nested dataframe. Each row represents a person_id/screening_date combination. The dataframe nested in each row includes all information in the corresponding ProPublica table that is relevant to the compas score of that person_id/screening_date combination. By using a left_join on person_id we duplicate the information in the ProPublica table for each screening_date (since there can be multiple matches). The prefix `dyn` means the information can change over time (e.g., prior offenses), while the prefix `stat` means the information should not change (e.g., date of birth).
 
@@ -385,6 +426,10 @@ features_on = pmap_dfr(data_on, .f=compute_features_on)
 #### After screening_date
 
 ```{r}
+#drop offenses within 30 features of key_events because we only cared about that for 
+#data before or before/on the screening date
+key_events = key_events %>% mutate(offenses_within_30 = NULL)
+
 dyn_arrest_after = key_events %>%
   left_join(casearrest_df, by="person_id") %>% # Duplicates features for different screening_dates
   filter(arrest_date > current_offense_date) %>% # Only charges before the current offense should matter

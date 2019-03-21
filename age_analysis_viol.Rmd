@@ -250,8 +250,8 @@ age_spline_viol =
     x = "\n Age at COMPAS screening date", 
     y = "Violence Score \n"
   ) +
-  theme(text = element_text(size=14),
-        axis.text=element_text(size=14),
+  theme(text = element_text(size=16),
+        axis.text=element_text(size=16),
         legend.position = c(.95,.95),
         legend.title = element_blank(),
         # legend.key.width = unit(1.5, "cm"),
@@ -264,7 +264,7 @@ age_spline_viol
 ```
 
 ```{r}
-ggsave("Figures/age_spline_viol.pdf",plot = age_spline_viol, width = 7, height = 4, units = "in")
+ggsave("Figures/age_spline_viol.pdf",plot = age_spline_viol, width = 5, height = 4, units = "in")
 
 ```
 
@@ -343,8 +343,8 @@ lb_inds_freq_viol = ggplot()+
   xlim(xmin,xmax) +
   xlab("\n Age at COMPAS screening date") +
   ylab("Violent score\n ") +
-  theme(text = element_text(size=14),
-        axis.text=element_text(size=14),
+  theme(text = element_text(size=18),
+        axis.text=element_text(size=18),
         legend.position="none")
 lb_inds_freq_viol
 
@@ -356,7 +356,7 @@ Save figures for paper
 ```{r}
 ggsave("Figures/fireplot_all_viol.pdf",plot = fireplot_all_viol, width = 7, height = 4, units = "in")
 ggsave("Figures/reverse_fireplot_all_viol.pdf",plot = reverse_fireplot_all_viol, width = 7, height = 4, units = "in")
-ggsave("Figures/lb_inds_freq_viol.pdf",plot = lb_inds_freq_viol, width = 7, height = 4, units = "in")
+ggsave("Figures/lb_inds_freq_viol.pdf",plot = lb_inds_freq_viol, width = 5, height = 4, units = "in")
 
 ```
 
@@ -465,6 +465,15 @@ inds2 = lb_vio %>%
           filter(p_felprop_violarrest == 2)%>%
    arrange(raw_score__age_spline) %>%
    top_n(n=-3, wt=raw_score__age_spline) # Fit lower bound on smallest value
+
+inds3 = lb_vio %>% 
+          filter(p_misdemassault_arrest == 2)%>%
+   arrange(raw_score__age_spline) %>%
+   top_n(n=-3, wt=raw_score__age_spline) # Fit lower bound on smallest value
+
+inds$person_id
+inds2$person_id
+inds3$person_id
 
 ```
 

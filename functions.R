@@ -1,4 +1,5 @@
-compute_features = function(person_id,screening_date,first_offense_date,current_offense_date,
+compute_features = function(person_id,screening_date,
+                            first_offense_date,current_offense_date,offenses_within_30,
                             arrest,charge,jail,prison,prob,people) {
   ### Computes features (e.g., number of priors) for each person_id/screening_date.
   
@@ -6,12 +7,14 @@ compute_features = function(person_id,screening_date,first_offense_date,current_
   first_offense_date = as_date(first_offense_date)
   screening_date = as_date(screening_date)
   current_offense_date = as_date(current_offense_date) 
+  # offenses_within_30 = offenses_within_30
   
   out = list()
   
   ### ID information
   out$person_id = person_id
   out$screening_date = screening_date
+  out$offenses_within_30 = offenses_within_30
   
   ### Other features
   
@@ -93,14 +96,16 @@ compute_features = function(person_id,screening_date,first_offense_date,current_
   return(out)
 }
 
-compute_features_on = function(person_id,screening_date,first_offense_date,current_offense_date,
+compute_features_on = function(person_id,screening_date,
+                               first_offense_date,current_offense_date,offenses_within_30,
                                arrest,charge,jail,prison,prob,people) {
   ### Computes features related to current offense
   
   # pmap coerces dates to numbers so convert back to date.
   first_offense_date = as_date(first_offense_date)
   screening_date = as_date(screening_date)
-  current_offense_date = as_date(current_offense_date) 
+  current_offense_date = as_date(current_offense_date)
+  offenses_within_30 = offenses_within_30
   
   out = list()
   
@@ -109,11 +114,12 @@ compute_features_on = function(person_id,screening_date,first_offense_date,curre
   out$screening_date = screening_date
   
   out$is_misdem = ifelse(is.null(charge), NA, if_else(any(charge$is_misdem==1) & all(charge$is_felony==0),1,0))
+  out$offenses_within_30 = offenses_within_30
   
   return(out)
 }
 
-compute_outcomes = function(person_id,screening_date,first_offense_date,current_offense_date,
+compute_outcomes = function(person_id,screening_date,first_offense_date,current_offense_date,offenses_within_30,
                             arrest,charge,jail,prison,prob,people){
   
   out = list()

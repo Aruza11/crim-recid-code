@@ -179,7 +179,7 @@ xx = seq(xmin,xmax, length.out=1000)
 
 lb = lb_age_samp %>% select(p_current_age, ages_sample) %>% unnest()
 
-ggplot()+
+age_samp = ggplot()+
   geom_point(aes(x=p_current_age, raw_score), color="#619CFF",alpha=.3, data=features_f_age) +
   geom_point(aes(x=p_current_age, raw_score), color="black",alpha=1, data=lb) +
   geom_point(aes(x=p_current_age, min_raw_score), color="green",alpha=1, data=lb_age_samp) +
@@ -188,12 +188,18 @@ ggplot()+
   theme_bw()+
   xlim(xmin,xmax)+
   xlab("Age at COMPAS screening date") +
-  ylab("Violent score") +
-  theme(text = element_text(size=12),
-        axis.text=element_text(size=12),
+  ylab("Violencef score") +
+  theme(text = element_text(size=14),
+        axis.text=element_text(size=14),
         legend.position="none")
+
+age_samp
 ```
 
+```{r}
+ggsave("Figures/age_samp_viol.pdf",plot = age_samp, width = 7, height = 4, units = "in")
+
+```
 
 
 
